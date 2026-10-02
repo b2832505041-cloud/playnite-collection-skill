@@ -14,7 +14,8 @@ param(
   [ValidateSet("ids", "verify")] [string]$Mode = "ids",
   [string]$DbDir = "",
   [string]$OutDir = ".\out",
-  [string]$PlaynitePath = ""
+  [string]$PlaynitePath = "",
+  [switch]$SkipShutdown
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,20 @@ if (-not $PlaynitePath) {
   }
 }
 if (-not $PlaynitePath) { throw "没找到 Playnite 安装目录，请用 -PlaynitePath 指定" }
-if (Get-Process Playnite.DesktopApp -ErrorAction SilentlyContinue) { throw "Playnite 正在运行，数据库被独占锁定。请先退出 Playnite。" }
+
+# Playnite 运行时独占锁定 games.db；优雅关闭后读取（-SkipShutdown 则要求已手动退出）
+if (Get-Process Playnite.DesktopApp -ErrorAction SilentlyContinue) {
+  if ($SkipShutdown) { throw "Playnite 正在运行，数据库被独占锁定。请先退出 Playnite（或去掉 -SkipShutdown 让脚本自动关闭）。" }
+  $exe = Join-Path $PlaynitePath "Playnite.DesktopApp.exe"
+  if (-not (Test-Path $exe)) { throw "Playnite 正在运行，但找不到 Playnite.DesktopApp.exe，请手动退出。" }
+  Write-Host "关闭 Playnite ..."
+  Start-Process $exe -ArgumentList "--shutdown" -ErrorAction SilentlyContinue
+  for ($i = 0; $i -lt 40; $i++) {
+    Start-Sleep -Seconds 1
+    if (-not (Get-Process Playnite.DesktopApp -ErrorAction SilentlyContinue)) { break }
+  }
+  if (Get-Process Playnite.DesktopApp -ErrorAction SilentlyContinue) { throw "Playnite 仍在运行，数据库被独占锁定。请先退出 Playnite。" }
+}
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("playnite-read-" + (Get-Date -Format "yyyyMMddHHmmss"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
@@ -64,7 +78,8 @@ if ($Mode -eq "ids") {
   $OutDir = [System.IO.Path]::GetFullPath($OutDir)
   New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
   # 保留原始来源名（本地化前的英文名）便于脚本比对
-  $arr = $rows | Select-Object Name, Source, GameId
+  # 用 @() 包装，避免单条数据时 ConvertTo-Json 输出对象而非数组
+  $arr = @($rows | Select-Object Name, Source, GameId)
   $json = $arr | ConvertTo-Json -Depth 3
   $file = Join-Path $OutDir "playnite_ids.json"
   [System.IO.File]::WriteAllText($file, $json, (New-Object System.Text.UTF8Encoding($false)))

@@ -55,13 +55,32 @@ const LABELS = {
   platformPrefix: "S 平台-"
 };
 
-/** 把各种日期格式统一成 ISO yyyy-MM-dd（Steam 返回日期 / ISO / 仅年份） */
+/** 把各种日期格式统一成 ISO yyyy-MM-dd（Steam 各语言区返回日期 / ISO / 仅年份） */
 function toIsoDate(s: string): string {
-  const cn = String(s || "").match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
-  if (cn) return cn[1] + "-" + cn[2].padStart(2, "0") + "-" + cn[3].padStart(2, "0");
-  const iso = String(s || "").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (iso) return iso[1] + "-" + iso[2].padStart(2, "0") + "-" + iso[3].padStart(2, "0");
+  const v = String(s || "").trim();
+  const pad = (n: string) => n.padStart(2, "0");
+  // 中文/日文：2024 年 11 月 8 日 / 2024年11月8日
+  let m = v.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  // 韩文：2024년 11월 8일
+  m = v.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  // ISO：2024-11-08
+  m = v.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  // 英文等：18 May, 2016 / May 18, 2016 / 18 May 2016
+  m = v.match(/(\d{1,2})\s+([A-Za-z]{3,9})[.,]?\s+(\d{4})/);
+  if (m) { const mon = monthNum(m[2]); if (mon) return `${m[3]}-${pad(String(mon))}-${pad(m[1])}`; }
+  m = v.match(/([A-Za-z]{3,9})\s+(\d{1,2})[.,]?\s+(\d{4})/);
+  if (m) { const mon = monthNum(m[1]); if (mon) return `${m[3]}-${pad(String(mon))}-${pad(m[2])}`; }
   return "";
+}
+
+/** 英文月份缩写/全称 → 数字 */
+function monthNum(s: string): number {
+  const m = String(s || "").toLowerCase().slice(0, 3);
+  const map: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  return map[m] || 0;
 }
 for (const v of Object.values(steam)) steamByPlaynite[v.playniteName] = v;
 
@@ -95,19 +114,21 @@ for (const g of list) {
   const sm = steamByPlaynite[name];
   const cf = confirmed[name];
   let cn = "";
-  let date = "";
+  // 库自带发行日期作为兜底：非 Steam（Epic/GOG/Xbox…）游戏的日期不会被丢掉
+  let date = g.ReleaseDate || "";
   let desc = "";
   let genres = "";
   let dev = "";
   let pub = "";
 
+  // 优先级：人工表 > 版本标签 > 确认结果 > Steam 官方名（与 SKILL.md 一致）
   if (manualNames[name]) cn = cleanOfficialName(manualNames[name]);
-  if (versionLabels[name]) cn = versionLabels[name];
+  if (!cn && versionLabels[name]) cn = versionLabels[name];
   if (!cn && cf && cf.localName && isTargetLanguage(cf.localName, lang) && normalizeName(cf.localName) !== normalizeName(name)) cn = cleanOfficialName(cf.localName);
   if (!cn && sm && sm.localName && isTargetLanguage(sm.localName, lang) && normalizeName(sm.localName) !== normalizeName(name)) cn = cleanOfficialName(sm.localName);
 
   if (sm) {
-    date = sm.releaseDate || "";
+    if (sm.releaseDate) date = sm.releaseDate;
     if (!desc) desc = sm.desc || "";
     genres = (sm.genres || []).join(";");
     dev = (sm.developers || []).join(";");
@@ -151,17 +172,23 @@ for (const g of list) {
 }
 
 // ---------- 名称去重：同名追加（来源） ----------
-const used = new Map<string, Row>();
+// 先按「期望名」分组；任一组内出现多条时，所有成员统一追加（来源）后缀，仍冲突再加序号。
+const byBase = new Map<string, Row[]>();
 for (const r of rows) {
-  const finalName = r.cn || r.name;
-  if (!used.has(finalName)) { used.set(finalName, r); continue; }
-  const first = used.get(finalName)!;
-  if (!/[（(][^)）]*[)）]$/.test(first.cn || first.name)) first.cn = (first.cn || first.name) + "（" + first.source + "）";
-  let candidate = finalName + "（" + r.source + "）";
-  let k = 2;
-  while (used.has(candidate)) { candidate = finalName + "（" + r.source + " " + k + "）"; k++; }
-  r.cn = candidate;
-  used.set(candidate, r);
+  const base = r.cn || r.name;
+  const group = byBase.get(base);
+  if (group) group.push(r); else byBase.set(base, [r]);
+}
+for (const [base, group] of byBase) {
+  if (group.length <= 1) continue;
+  const seen = new Set<string>();
+  for (const r of group) {
+    let candidate = base + "（" + r.source + "）";
+    let k = 2;
+    while (seen.has(candidate)) { candidate = base + "（" + r.source + " " + k + "）"; k++; }
+    seen.add(candidate);
+    r.cn = candidate;
+  }
 }
 
 // ---------- 落盘 ----------

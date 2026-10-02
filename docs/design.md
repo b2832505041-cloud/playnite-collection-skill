@@ -26,14 +26,15 @@ map/manual_names.json / version_labels.json / manual_ids.json        │
 
 ## 分类维度约定 / Category dimension conventions
 
-统一用「维度前缀 + 编号 + 名称」，好处是在 Playnite 筛选器里按字母排序天然分组：
+统一用「维度前缀 + 编号 + 名称」，好处是在 Playnite 筛选器里按字母排序天然分组。
+落地位置：C（类型）与 E（其他）写入 Playnite 的**分类 Categories**；B（系列）、F（特性）、S（平台）、A（状态）写入**标签 Tags**。
 
-- `C01 类型-动作` … 类型（每款 1-2 个）
-- `B 系列-xxx` 系列
-- `E01 其他-工具软件` / `E02 其他-演示测试`
-- `F01 特性-多人合作` / `F02 特性-在线对战` / `F03 特性-本地同屏`
-- `S 平台-Steam`
-- `A01 状态-正在玩`（Playnite 完成状态，只给已安装）
+- `C01 类型-动作` … 类型（每款 1-2 个）→ 分类
+- `E01 其他-工具软件` / `E02 其他-演示测试` → 分类
+- `B 系列-xxx` 系列 → 标签（由 Series 字段自动生成）
+- `F01 特性-多人合作` / `F02 特性-在线对战` / `F03 特性-本地同屏` → 标签（由 Features 自动生成）
+- `S 平台-Steam` → 标签（自动）
+- `A01 状态-正在玩` → 标签（仅已安装；完成状态「未游玩/已通关」的本地化由 `loc_map.json` 处理，与此无关）
 
 ## 名称唯一化算法 / Name dedup algorithm
 
@@ -44,7 +45,8 @@ map/manual_names.json / version_labels.json / manual_ids.json        │
 
 ## 可回滚设计 / Rollback design
 
-- 写元数据前把每条游戏的旧值写入 `meta_backup.tsv`（Id + 名称 + 日期 + 各类 ID 串）
-- 菜单「撤销元数据改动」按该文件还原
+- 写元数据前把每条游戏的旧值写入 `meta_backup.tsv`（Id + 名称 + 日期 + 各类 ID 串），且多次应用也只保留「首次改动前」的原始值
+- 来源/完成状态/平台的本地化改动记录在 `lookup_backup.tsv`（Type + Id + 原名）
+- 菜单「撤销元数据改动」按 `meta_backup.tsv` + `lookup_backup.tsv` 一并还原
 - 菜单「清除分类/标签」只删除 `import_result.json` 里记录过的分类/标签 ID
-- 整库备份保留在 `backup/`（每次写入前自动复制）
+- 整库备份保留在 `backup/`（`export-playnite.ps1` 导出时自动复制）

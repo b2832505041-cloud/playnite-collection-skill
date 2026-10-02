@@ -26,13 +26,12 @@ namespace PlayniteCollectionTool
             WriteLog("Plugin constructed, outDir=" + outDir);
         }
 
-        private static void WriteLog(string msg)
+        private void WriteLog(string msg)
         {
             try
             {
-                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Playnite", "ExtensionsData", "playnite-collection-tool");
-                Directory.CreateDirectory(dir);
-                File.AppendAllText(Path.Combine(dir, "tool_log.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine, new UTF8Encoding(true));
+                Directory.CreateDirectory(outDir);
+                File.AppendAllText(Path.Combine(outDir, "tool_log.txt"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine, new UTF8Encoding(true));
             }
             catch { }
         }
@@ -241,16 +240,32 @@ namespace PlayniteCollectionTool
             catch (Exception ex) { WriteLog("Failed to load loc_map.json (using defaults): " + ex.Message); }
         }
 
-        // 只对"来源/完成状态/平台"做替换，避免误伤厂商里的自造词
-        private void LocalizeAllLookups(bool dryRun, List<string> report)
+        // 只对"来源/完成状态/平台"做替换，避免误伤厂商里的自造词。
+        // 改动记录到 lookup_backup.tsv（Type<TAB>Id<TAB>OldName），可随元数据一起回滚。
+        private void LocalizeAllLookups()
         {
+            var newRows = new List<string>();
+            string backupPath = Path.Combine(outDir, "lookup_backup.tsv");
+            var existing = new Dictionary<Guid, string>();
+            if (File.Exists(backupPath))
+            {
+                foreach (var line in File.ReadAllLines(backupPath, Encoding.UTF8))
+                {
+                    var p = line.Split('\t');
+                    if (p.Length >= 3)
+                    {
+                        Guid gid;
+                        if (Guid.TryParse(p[1], out gid) && !existing.ContainsKey(gid)) existing[gid] = p[2];
+                    }
+                }
+            }
             foreach (var src in PlayniteApi.Database.Sources)
             {
                 string t = Tr(src.Name);
                 if (t != src.Name)
                 {
-                    if (!dryRun) { src.Name = t; PlayniteApi.Database.Sources.Update(src); }
-                    report.Add("Source: " + src.Name + " -> " + t);
+                    if (!existing.ContainsKey(src.Id)) { existing[src.Id] = src.Name; newRows.Add("Source\t" + src.Id + "\t" + src.Name.Replace("\t", " ")); }
+                    src.Name = t; PlayniteApi.Database.Sources.Update(src);
                 }
             }
             foreach (var cs in PlayniteApi.Database.CompletionStatuses)
@@ -258,8 +273,8 @@ namespace PlayniteCollectionTool
                 string t = Tr(cs.Name);
                 if (t != cs.Name)
                 {
-                    if (!dryRun) { cs.Name = t; PlayniteApi.Database.CompletionStatuses.Update(cs); }
-                    report.Add("Completion status: " + cs.Name + " -> " + t);
+                    if (!existing.ContainsKey(cs.Id)) { existing[cs.Id] = cs.Name; newRows.Add("CompletionStatus\t" + cs.Id + "\t" + cs.Name.Replace("\t", " ")); }
+                    cs.Name = t; PlayniteApi.Database.CompletionStatuses.Update(cs);
                 }
             }
             foreach (var pf in PlayniteApi.Database.Platforms)
@@ -267,9 +282,14 @@ namespace PlayniteCollectionTool
                 string t = Tr(pf.Name);
                 if (t != pf.Name)
                 {
-                    if (!dryRun) { pf.Name = t; PlayniteApi.Database.Platforms.Update(pf); }
-                    report.Add("Platform: " + pf.Name + " -> " + t);
+                    if (!existing.ContainsKey(pf.Id)) { existing[pf.Id] = pf.Name; newRows.Add("Platform\t" + pf.Id + "\t" + pf.Name.Replace("\t", " ")); }
+                    pf.Name = t; PlayniteApi.Database.Platforms.Update(pf);
                 }
+            }
+            if (newRows.Count > 0)
+            {
+                File.AppendAllText(backupPath, string.Join("\n", newRows) + "\n", new UTF8Encoding(true));
+                WriteLog("Localized lookups, recorded " + newRows.Count + " entries for rollback");
             }
         }
 
@@ -280,15 +300,25 @@ namespace PlayniteCollectionTool
             {
                 string metaPath = Path.Combine(outDir, "游戏数据.tsv");
                 if (!File.Exists(metaPath)) { PlayniteApi.Dialogs.ShowErrorMessage("Not found: " + metaPath, "Playnite Collection Tool"); return; }
-                ApplyMeta(metaPath, true);
+                int renamed = ApplyMeta(metaPath, true);
+                // 改名后，分类.tsv 里记的最终名需要重新匹配一次
+                if (renamed > 0)
+                {
+                    string catPath = Path.Combine(outDir, "分类.tsv");
+                    if (File.Exists(catPath))
+                    {
+                        int reapplied = ApplyCategories(catPath, false);
+                        WriteLog("Re-applied categories after rename, matched " + reapplied + " rows");
+                    }
+                }
             }
             catch (Exception ex) { WriteLog("Apply metadata failed: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("Apply metadata failed: " + ex.Message, "Playnite Collection Tool"); }
         }
 
-        private void ApplyMeta(string metaPath, bool showDialog)
+        private int ApplyMeta(string metaPath, bool showDialog)
         {
             var lines = File.ReadAllLines(metaPath, Encoding.UTF8);
-            if (lines.Length < 2) { WriteLog("Metadata file empty"); return; }
+            if (lines.Length < 2) { WriteLog("Metadata file empty"); return 0; }
             var header = lines[0].TrimStart('\uFEFF').Split('\t');
             int iId = Idx(header, "Id");
             int iName = Idx(header, "Name");
@@ -300,15 +330,25 @@ namespace PlayniteCollectionTool
             int iPub = Max(Idx(header, "Publishers"), Idx(header, "发行商"));
             int iDesc = Max(Idx(header, "Description"), Idx(header, "简介"), Idx(header, "描述"));
             int iSeries = Max(Idx(header, "Series"), Idx(header, "系列"));
-            if (iName < 0) { WriteLog("Metadata missing Name column"); return; }
+            if (iName < 0) { WriteLog("Metadata missing Name column"); return 0; }
 
             var gameList = new List<Playnite.SDK.Models.Game>();
             foreach (var g in PlayniteApi.Database.Games) gameList.Add(g);
 
-            var nameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var revert = new StringBuilder();
-            revert.AppendLine("Id\tName\tReleaseDate\tGenres\tDevelopers\tPublishers\tSeries\tDescription");
-            int nRevert = 0;
+            // 读取既有备份，保留「首次改动前」的原始值，避免多次应用后覆盖丢失
+            string backupPath = Path.Combine(outDir, "meta_backup.tsv");
+            var backedUp = new HashSet<Guid>();
+            string existingBackup = "";
+            if (File.Exists(backupPath))
+            {
+                existingBackup = File.ReadAllText(backupPath, Encoding.UTF8);
+                foreach (var rec in ParseBackup(existingBackup))
+                {
+                    Guid bid;
+                    if (Guid.TryParse(rec.id, out bid)) backedUp.Add(bid);
+                }
+            }
+            var newRows = new StringBuilder();
             int updated = 0, nameChanged = 0, dateFilled = 0, descChanged = 0, genresChanged = 0, devChanged = 0, pubChanged = 0;
             var unmatched = new List<string>();
 
@@ -361,7 +401,7 @@ namespace PlayniteCollectionTool
                         bool changed = false;
 
                         if (newName.Length > 0 && !string.Equals(newName, g.Name, StringComparison.Ordinal))
-                        { nameMap[g.Name] = newName; g.Name = newName; changed = true; nameChanged++; }
+                        { g.Name = newName; changed = true; nameChanged++; }
                         if (release.Length > 0)
                         {
                             DateTime d;
@@ -393,30 +433,32 @@ namespace PlayniteCollectionTool
                         {
                             PlayniteApi.Database.Games.Update(g);
                             updated++;
-                            revert.AppendLine(before);
-                            nRevert++;
+                            if (!backedUp.Contains(g.Id)) { newRows.AppendLine(before); backedUp.Add(g.Id); }
                         }
                     }
                 }
 
-                // 本地化"来源/完成状态/平台"
-                var report = new List<string>();
-                LocalizeAllLookups(false, report);
+                // 本地化"来源/完成状态/平台"（改动记录到 lookup_backup.tsv，可回滚）
+                LocalizeAllLookups();
             }
 
-            // 改名后，分类标签表里记的还是旧名字，需要用名字映射重新应用一遍
-            string catPath = Path.Combine(outDir, "分类.tsv");
-            if (File.Exists(catPath) && nameMap.Count > 0)
+            // 合并备份：旧备份行（保留首次原始值）+ 本次新增行
+            var backupSb = new StringBuilder();
+            backupSb.AppendLine("Id\tName\tReleaseDate\tGenres\tDevelopers\tPublishers\tSeries\tDescription");
+            if (existingBackup.Length > 0)
             {
-                int reapplied = ApplyCategories(catPath, false, nameMap);
-                WriteLog("Re-applied categories after rename, matched " + reapplied + " rows");
+                foreach (var line in existingBackup.Replace("\r\n", "\n").Split('\n'))
+                {
+                    if (line.Length > 0 && !line.StartsWith("Id\tName", StringComparison.Ordinal)) backupSb.AppendLine(line);
+                }
             }
-
-            File.WriteAllText(Path.Combine(outDir, "meta_backup.tsv"), revert.ToString(), new UTF8Encoding(true));
+            backupSb.Append(newRows.ToString());
+            File.WriteAllText(backupPath, backupSb.ToString(), new UTF8Encoding(true));
 
             string msg = "Metadata applied.\nUpdated games: " + updated + " (renamed " + nameChanged + " / release date " + dateFilled + " / description " + descChanged + " / genres " + genresChanged + " / developers " + devChanged + " / publishers " + pubChanged + ")\nUnmatched: " + unmatched.Count + "\nBackup: meta_backup.tsv";
             WriteLog(msg.Replace("\n", " | "));
             if (showDialog) PlayniteApi.Dialogs.ShowMessage(msg + (unmatched.Count > 0 ? "\n\nUnmatched samples:\n" + string.Join("\n", unmatched.Take(8).ToArray()) : ""), "Playnite Collection Tool");
+            return nameChanged;
         }
 
         private static string DateStr(Playnite.SDK.Models.ReleaseDate? rd)
@@ -498,33 +540,80 @@ namespace PlayniteCollectionTool
             try
             {
                 string bk = Path.Combine(outDir, "meta_backup.tsv");
-                if (!File.Exists(bk)) { PlayniteApi.Dialogs.ShowMessage("No meta_backup.tsv to revert.", "Playnite Collection Tool"); return; }
-                string text = File.ReadAllText(bk, Encoding.UTF8);
+                string lk = Path.Combine(outDir, "lookup_backup.tsv");
+                if (!File.Exists(bk) && !File.Exists(lk)) { PlayniteApi.Dialogs.ShowMessage("No backup to revert.", "Playnite Collection Tool"); return; }
+
                 int cnt = 0;
-                using (PlayniteApi.Database.BufferedUpdate())
+                if (File.Exists(bk))
                 {
-                    foreach (var rec in ParseBackup(text))
+                    string text = File.ReadAllText(bk, Encoding.UTF8);
+                    using (PlayniteApi.Database.BufferedUpdate())
                     {
-                        Guid id;
-                        if (!Guid.TryParse(rec.id, out id)) continue;
-                        var g = PlayniteApi.Database.Games.Get(id);
-                        if (g == null) continue;
-                        if (!string.IsNullOrEmpty(rec.name)) g.Name = rec.name;
-                        DateTime d;
-                        if (DateTime.TryParse(rec.releaseDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d)) g.ReleaseDate = new Playnite.SDK.Models.ReleaseDate(d); else g.ReleaseDate = null;
-                        if (!string.IsNullOrEmpty(rec.genres)) g.GenreIds = EnsureGenres(rec.genres.Split(';'));
-                        if (!string.IsNullOrEmpty(rec.developers)) g.DeveloperIds = EnsureCompanies(rec.developers.Split(';'));
-                        if (!string.IsNullOrEmpty(rec.publishers)) g.PublisherIds = EnsureCompanies(rec.publishers.Split(';'));
-                        if (!string.IsNullOrEmpty(rec.series)) g.SeriesIds = EnsureSeries(rec.series.Split(';'));
-                        if (!string.IsNullOrEmpty(rec.description)) g.Description = rec.description;
-                        PlayniteApi.Database.Games.Update(g);
-                        cnt++;
+                        foreach (var rec in ParseBackup(text))
+                        {
+                            Guid id;
+                            if (!Guid.TryParse(rec.id, out id)) continue;
+                            var g = PlayniteApi.Database.Games.Get(id);
+                            if (g == null) continue;
+                            if (!string.IsNullOrEmpty(rec.name)) g.Name = rec.name;
+                            DateTime d;
+                            if (DateTime.TryParse(rec.releaseDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d)) g.ReleaseDate = new Playnite.SDK.Models.ReleaseDate(d); else g.ReleaseDate = null;
+                            if (!string.IsNullOrEmpty(rec.genres)) g.GenreIds = EnsureGenres(rec.genres.Split(';'));
+                            if (!string.IsNullOrEmpty(rec.developers)) g.DeveloperIds = EnsureCompanies(rec.developers.Split(';'));
+                            if (!string.IsNullOrEmpty(rec.publishers)) g.PublisherIds = EnsureCompanies(rec.publishers.Split(';'));
+                            if (!string.IsNullOrEmpty(rec.series)) g.SeriesIds = EnsureSeries(rec.series.Split(';'));
+                            g.Description = string.IsNullOrEmpty(rec.description) ? null : rec.description;
+                            PlayniteApi.Database.Games.Update(g);
+                            cnt++;
+                        }
                     }
                 }
-                PlayniteApi.Dialogs.ShowMessage("Reverted " + cnt + " games' metadata.", "Playnite Collection Tool");
-                WriteLog("Reverted metadata " + cnt + " rows");
+
+                int nLookup = RevertLookups();
+
+                string msg = "Reverted " + cnt + " games' metadata" + (nLookup > 0 ? " and " + nLookup + " lookup names" : "") + ".";
+                PlayniteApi.Dialogs.ShowMessage(msg, "Playnite Collection Tool");
+                WriteLog("Reverted metadata " + cnt + " rows, lookups " + nLookup);
             }
             catch (Exception ex) { WriteLog("Revert failed: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("Revert failed: " + ex.Message, "Playnite Collection Tool"); }
+        }
+
+        // 还原被本地化的来源/完成状态/平台名称（依据 lookup_backup.tsv）
+        private int RevertLookups()
+        {
+            int n = 0;
+            string backupPath = Path.Combine(outDir, "lookup_backup.tsv");
+            if (!File.Exists(backupPath)) return 0;
+            foreach (var line in File.ReadAllLines(backupPath, Encoding.UTF8))
+            {
+                var p = line.Split('\t');
+                if (p.Length < 3) continue;
+                Guid gid;
+                if (!Guid.TryParse(p[1], out gid)) continue;
+                string oldName = p[2];
+                switch (p[0])
+                {
+                    case "Source":
+                        {
+                            var s = PlayniteApi.Database.Sources.Get(gid);
+                            if (s != null && s.Name != oldName) { s.Name = oldName; PlayniteApi.Database.Sources.Update(s); n++; }
+                        }
+                        break;
+                    case "CompletionStatus":
+                        {
+                            var c = PlayniteApi.Database.CompletionStatuses.Get(gid);
+                            if (c != null && c.Name != oldName) { c.Name = oldName; PlayniteApi.Database.CompletionStatuses.Update(c); n++; }
+                        }
+                        break;
+                    case "Platform":
+                        {
+                            var pf = PlayniteApi.Database.Platforms.Get(gid);
+                            if (pf != null && pf.Name != oldName) { pf.Name = oldName; PlayniteApi.Database.Platforms.Update(pf); n++; }
+                        }
+                        break;
+                }
+            }
+            return n;
         }
 
         private class BkRec { public string id; public string name; public string releaseDate; public string genres; public string developers; public string publishers; public string series; public string description; }
@@ -644,9 +733,7 @@ namespace PlayniteCollectionTool
             }
         }
 
-        private int ApplyCategories(string mapPath, bool showDialog) { return ApplyCategories(mapPath, showDialog, null); }
-
-        private int ApplyCategories(string mapPath, bool showDialog, Dictionary<string, string> renameMap)
+        private int ApplyCategories(string mapPath, bool showDialog)
         {
             if (!File.Exists(mapPath))
             {
@@ -692,10 +779,7 @@ namespace PlayniteCollectionTool
             {
                 foreach (var r in rows)
                 {
-                    string matchName = r.Name;
-                    string mappedName;
-                    if (renameMap != null && renameMap.TryGetValue(r.Name, out mappedName)) matchName = mappedName;
-                    var cands = gameList.Where(g => string.Equals(g.Name, matchName, StringComparison.OrdinalIgnoreCase)).ToList();
+                    var cands = gameList.Where(g => string.Equals(g.Name, r.Name, StringComparison.OrdinalIgnoreCase)).ToList();
                     if (cands.Count == 0) { unmatched.Add(r.Name); continue; }
 
                     if (cands.Count > 1 && !string.IsNullOrEmpty(r.Source))

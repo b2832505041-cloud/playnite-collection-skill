@@ -58,7 +58,8 @@ export function isTargetLanguage(name: string, lang: string): boolean {
     case "zh":
     case "zh-cn":
     case "zh-tw":
-      return /[\u4e00-\u9fff]/.test(n);
+      // 含汉字但夹杂假名（平/片假名）的是日文名，不算中文，避免「龍が如く」被误判跳过
+      return /[\u4e00-\u9fff]/.test(n) && !/[\u3040-\u30ff]/.test(n);
     case "japanese":
     case "ja":
       return /[\u3040-\u30ff]/.test(n);

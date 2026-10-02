@@ -70,6 +70,15 @@ foreach ($f in Get-ChildItem (Join-Path $DbDir "*.db")) {
 }
 Write-Host "已复制数据库到 $tmp"
 
+# 顺带把整库备份到 <repo>/backup/library_<时间戳>/（写入前的可回滚副本，落实"写入前备份"）
+$repo = Split-Path -Parent $PSScriptRoot
+$backupDir = Join-Path $repo ("backup\library_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+foreach ($f in Get-ChildItem (Join-Path $DbDir "*.db")) {
+  Copy-Item $f.FullName -Destination $backupDir -Force
+}
+Write-Host "已备份数据库到 $backupDir"
+
 # ---------- 3. 读取 ----------
 Add-Type -Path $lite
 $LFMAP = @{

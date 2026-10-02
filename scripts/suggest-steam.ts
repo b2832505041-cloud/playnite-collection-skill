@@ -32,10 +32,15 @@ async function suggest(q: string): Promise<{ appid: string; name: string }[]> {
   if (!r) return [];
   const t = await r.text();
   const items: { appid: string; name: string }[] = [];
-  const re = /<a[^>]*data-ds-appid="(\d+)"[\s\S]*?<div class="match_name">([\s\S]*?)<\/div>/g;
+  // 兼容 Steam 改版：match_name 允许带额外 class；名字做 HTML 实体反转义
+  const re = /<a[^>]*data-ds-appid="(\d+)"[\s\S]*?<div[^>]*class="[^"]*match_name[^"]*"[^>]*>([\s\S]*?)<\/div>/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(t))) items.push({ appid: m[1], name: m[2].replace(/<[^>]+>/g, "").trim() });
+  while ((m = re.exec(t))) items.push({ appid: m[1], name: decodeHtml(m[2].replace(/<[^>]+>/g, "").trim()) });
   return items;
+}
+
+function decodeHtml(s: string): string {
+  return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'");
 }
 
 const out: Record<string, any> = {};

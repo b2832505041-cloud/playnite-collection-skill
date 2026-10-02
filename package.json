@@ -6,11 +6,12 @@
   "description": "Playnite 游戏库分类与本地化 Skill：导出库、抓目标语言官方元数据、生成分类/标签并写入（可回滚）。",
   "license": "MIT",
   "engines": {
-    "node": ">=22.6"
+    "node": ">=23.6"
   },
   "scripts": {
-    "export": "node scripts/export-playnite.ps1",
-    "ids": "node scripts/collect-ids.ps1"
+    "export": "powershell -ExecutionPolicy Bypass -File scripts/export-playnite.ps1",
+    "ids": "powershell -ExecutionPolicy Bypass -File scripts/collect-ids.ps1",
+    "build-plugin": "powershell -ExecutionPolicy Bypass -File scripts/build-plugin.ps1"
   },
   "keywords": [
     "playnite",

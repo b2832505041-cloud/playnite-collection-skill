@@ -48,12 +48,12 @@ Dimension prefixes (default zh; edit `LABELS` in `build-data.ts` for another lan
 
 | 维度 Dim | 落地 How | 例子 Example |
 |---|---|---|
-| C 类型 Type | 标签 tag（1-2 个） | `C01 类型-动作` |
-| B 系列 Series | 标签 tag | `B 系列-Forza Horizon` |
-| E 其他 Other | 标签 tag | `E01 其他-工具软件` / `E02 其他-演示测试` |
-| F 特性 Feature | 标签 tag | `F01 特性-多人合作` `F02 特性-在线对战` `F03 特性-本地同屏` |
-| S 平台 Platform | 标签 tag | `S 平台-Steam` |
-| A 状态 Status | 完成状态 completion status | `正在玩`（仅已安装 installed only） |
+| C 类型 Type | 分类 category（1-2 个） | `C01 类型-动作` |
+| B 系列 Series | 标签 tag（自动） | `B 系列-Forza Horizon` |
+| E 其他 Other | 分类 category | `E01 其他-工具软件` / `E02 其他-演示测试` |
+| F 特性 Feature | 标签 tag（自动） | `F01 特性-多人合作` `F02 特性-在线对战` `F03 特性-本地同屏` |
+| S 平台 Platform | 标签 tag（自动） | `S 平台-Steam` |
+| A 状态 Status | 标签 tag（自动，仅已安装） | `A01 状态-正在玩` |
 | D 厂商 Company | 原生字段 native field | 不重复打标签 |
 
 规则 Rules：
@@ -77,7 +77,7 @@ manual > version labels > confirmed > Steam target-locale name > manual map > ke
 
 ### 4. 写入 / Write（按 ID）
 
-生成 `游戏数据.tsv`（列：`Id, Name(原名), Source, LocalName, ReleaseDate, Genres, Developers, Publishers, Description`）与
+生成 `游戏数据.tsv`（列：`Id, Name, Source, LocalName, ReleaseDate, Genres, Developers, Publishers, Description`）与
 `分类.tsv`（`Name, Source, Categories, Tags`），放进：
 
 ```
