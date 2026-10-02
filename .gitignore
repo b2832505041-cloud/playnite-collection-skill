@@ -20,3 +20,6 @@ plugin/bin/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 本地测试
+.test-tmp/

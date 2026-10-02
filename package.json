@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Playnite 游戏库分类与中文化 Skill：导出库、抓官方中文元数据、生成分类/标签并写入。",
+  "description": "Playnite 游戏库分类与本地化 Skill：导出库、抓目标语言官方元数据、生成分类/标签并写入（可回滚）。",
   "license": "MIT",
   "engines": {
     "node": ">=22.6"

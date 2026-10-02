@@ -1,7 +1,7 @@
 Id: 7c4e1a92-5b3d-4f8e-9a21-6d0c3e5f8b47
-Name: Playnite 库整理
+Name: Playnite Collection Tool
 Author: playnite-collection-skill
 Version: 0.1.0
 Module: CollectionPlugin.dll
 Type: GenericPlugin
-Description: 把游戏库整理成分类/标签，并中文化/补全游戏名、简介、发行日期、类型与厂商（可回滚）
+Description: 把游戏库整理成分类/标签，并本地化/补全游戏名、简介、发行日期、类型与厂商（可回滚，目标语言可配置）

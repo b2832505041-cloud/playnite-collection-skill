@@ -1,5 +1,5 @@
 /**
- * 从 Steam 国区商店抓官方中文元数据。
+ * 从 Steam 商店抓目标语言区的官方元数据（--lang 决定语言）。
  * 用法: node scripts/fetch-steam-meta.ts --ids out/playnite_ids.json --out out/steam_meta.json [--lang schinese] [--cc cn]
  * 输入 JSON: [{ Name, Source, GameId }]，只处理 Source=Steam 且 GameId 是数字的条目。
  */

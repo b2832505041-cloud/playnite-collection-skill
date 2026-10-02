@@ -1,5 +1,5 @@
 /**
- * 用候选 appid 调 Steam 商店接口，确认「是不是游戏本体」并取官方中文名/日期/简介。
+ * 用候选 appid 调 Steam 商店接口，确认「是不是游戏本体」并取官方目标语言名/日期/简介。
  * 两种输入模式：
  *   1) --candidates out/steam_suggest.json   从 suggest-steam 的输出里挑候选
  *   2) --appids "1245620,383270"             直接指定 appid（适合少数需要人工补的条目）

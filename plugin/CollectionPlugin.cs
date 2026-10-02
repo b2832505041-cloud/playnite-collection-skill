@@ -273,7 +273,7 @@ namespace PlayniteCollectionTool
             }
         }
 
-        // ================= 元数据写入（中文化 + 补充）=================
+        // ================= 元数据写入（本地化 + 补充）=================
         private void DoApplyMeta()
         {
             try

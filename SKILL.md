@@ -15,10 +15,10 @@ Organize a Playnite library into filterable categories/tags, and localize/enrich
 
 ## 前置确认 / Before starting (ask what's missing)
 
-1. Playnite 已安装并导入过商店库；Windows + .NET Framework 4.x；Node.js ≥ 22.6。
+1. Playnite 已安装并导入过商店库；Windows + .NET Framework 4.x；Node.js ≥ 23.6。
 2. **目标语言**：默认 `schinese`（简体中文）。用户要别的语言就传 `--lang`：
-   `tchinese` 繁体 / `japanese` 日文 / `koreana` 韩文 / `english` 英文（反向，中文名→英文）。
-   Target language: default `schinese`; pass `--lang` for others (`english` reverses zh→en).
+   `tchinese` 繁体 / `japanese` 日文 / `koreana` 韩文 / `english` 英文 / `german` `french` `italian` `spanish` `russian` 德法意西俄。
+   Target language: default `schinese`; pass `--lang` for others (`english` converts non-Latin names to English).
 3. **是否允许改游戏名**：改名前必须让用户知情（名称是用户最直观的资产）。
    Ask whether renaming games is OK.
 
@@ -73,7 +73,7 @@ manual > version labels > confirmed > Steam target-locale name > manual map > ke
 - **续作误配**：搜前作名会命中续作，用「原名+年份+类型」交叉校验（见 docs/pitfalls.md）。
 - 官方名带 `™®©` 和版本尾巴要清洗；英文尾巴只在"确实是原名开头"时才裁掉。
 - 简介优先官方目标语言 `short_description`；没有就写一句 ≤40 字的玩法概述。
-- **中英互换**：目标 `english` 时，含 CJK 的名字才需要翻译，纯拉丁名跳过；目标 `schinese` 时相反。
+- **任意语言互换**：目标为某语言时，只有还不是该语言文字的名字才需要翻译；每种语言用各自字符集判断（汉字/假名/谚文/西里尔/拉丁）。
 
 ### 4. 写入 / Write（按 ID）
 
@@ -95,7 +95,7 @@ manual > version labels > confirmed > Steam target-locale name > manual map > ke
 - 必须在 `OnApplicationStarted` 做，不能在构造函数（那时 Database.Games 是空的）。
 - **按游戏 ID（GUID）写入**，不要只按名字（改名后名字失配）。
 - 插件必须 **AnyCPU**（Playnite 是 32 位进程，x64 报 BadImageFormatException）。
-- 本地化映射 `LocMap` 键不可重复（大小写不敏感），否则静态构造抛异常；默认中文，可用 `loc_map.json` 覆盖成任意语言。
+- 本地化映射 `LocMap` 默认简体中文，可用 `loc_map.json` 覆盖成任意语言（键=英文原名，值=目标语言名；重复键后者覆盖前者）。
 
 ### 5. 校验 / Verify
 

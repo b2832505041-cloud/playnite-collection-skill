@@ -15,8 +15,8 @@ Writes via a rollback-safe Playnite plugin, without touching install info or lau
    **Categorize** games into Playnite categories/tags by type / series / feature / platform / tool.
 2. **本地化**：把游戏名换成目标语言官方名（默认取 Steam 商店对应语言区），补简介、发行日期、类型、厂商。
    **Localize**: swap names to the official target-language name (default from Steam store), enrich description/date/genres/companies.
-3. **中英互换 / 任意语言**：目标语言由 `--lang` 控制（`schinese` / `tchinese` / `japanese` / `koreana` / `english`…）；目标为英文时反向把中文名换成英文。
-   **Language switch**: `--lang` controls the target; passing `english` reverses zh → en.
+3. **中英互换 / 任意语言**：目标语言由 `--lang` 控制（`schinese` / `tchinese` / `japanese` / `koreana` / `english`…）；目标为英文时把非英文名（中/日/韩/俄等）换成英文。
+   **Language switch**: `--lang` controls the target; passing `english` converts non-Latin names (zh/ja/ko/ru…) to English.
 4. **不重复**：同一作品的不同版本加版本后缀，跨平台重复加（来源）后缀。
    **No duplicates**: version suffixes for variants, (source) suffix for cross-platform duplicates.
 5. **可回滚**：写入前备份，插件菜单一键撤销。
@@ -35,8 +35,8 @@ Writes via a rollback-safe Playnite plugin, without touching install info or lau
 ## 快速开始 / Quick start
 
 ```powershell
-# 0. 前置：Windows + Playnite + .NET Framework 4.x（系统自带 csc）+ Node.js ≥ 22.6
-# Prereqs: Windows + Playnite + .NET Framework 4.x + Node.js >= 22.6
+# 0. 前置：Windows + Playnite + .NET Framework 4.x（系统自带 csc）+ Node.js ≥ 23.6
+# Prereqs: Windows + Playnite + .NET Framework 4.x + Node.js >= 23.6
 
 # 1. 编译并安装插件（写入 %APPDATA%\Playnite\Extensions\playnite-collection-tool\）
 powershell -ExecutionPolicy Bypass -File scripts\build-plugin.ps1
@@ -47,7 +47,7 @@ powershell -ExecutionPolicy Bypass -File scripts\export-playnite.ps1 -OutDir .\o
 # 3. 导出 Id/来源清单
 powershell -ExecutionPolicy Bypass -File scripts\collect-ids.ps1 -Mode ids -OutDir out
 
-# 4. 抓目标语言元数据（默认简体中文；改成 english 即反向英文化）
+# 4. 抓目标语言元数据（默认简体中文；改成 english 即英文化）
 node scripts\fetch-steam-meta.ts --ids out/playnite_ids.json --out out/steam_meta.json --lang schinese
 
 # 5. 为还没目标语言名的游戏找候选并确认
@@ -76,7 +76,7 @@ powershell -ExecutionPolicy Bypass -File scripts\collect-ids.ps1 -Mode verify
 | 繁体中文 Traditional Chinese | `tchinese` |
 | 日文 Japanese | `japanese` |
 | 韩文 Korean | `koreana` |
-| 英文（反向 中文→英文）English (reverse) | `english` |
+| 英文 English | `english` |
 | 德/法/意/西/俄 German/French/Italian/Spanish/Russian | `german` `french` `italian` `spanish` `russian` |
 
 界面字段名（来源/完成状态/平台）由 `loc_map.json` 控制（见 [examples/loc_map.json](examples/loc_map.json)），默认简体中文，可替换成任意语言。
@@ -99,7 +99,7 @@ UI field names (source/status/platform) are controlled by `loc_map.json` (see [e
 | Windows | 10/11 | 插件与导出脚本依赖 Playnite |
 | Playnite | 10.x（32 位） | 必须安装并导入过至少一个商店库 |
 | .NET Framework | 4.x | 系统自带 csc 即可，无需 .NET SDK |
-| Node.js | ≥ 22.6 | 跑数据脚本（仅内置模块） |
+| Node.js | ≥ 23.6 | 跑数据脚本（直接运行 .ts，仅内置模块） |
 | git | 可选 | 没装可跑 `scripts\setup-git.ps1` |
 
 ## 隐私说明 / Privacy

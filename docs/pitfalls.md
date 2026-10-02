@@ -40,7 +40,7 @@ Playnite 是 **32 位进程**（`Playnite.DesktopApp.exe` PE machine = 0x014C）
 没有 .NET SDK 时从 GAC 解析：`C:\Windows\Microsoft.NET\assembly\GAC_MSIL\<name>\<ver>\<name>.dll`；
 注意 `PresentationCore` 在 `GAC_32`。另外**别手动引用 `System.Windows.Forms.dll`**（csc 默认已引用，会 CS1703 重复）。
 
-## 中文化
+## 本地化 / Localization
 
 **9. 「续作劫持」是最常见的误配**
 Steam 搜索 `Death Stranding` 会返回《死亡搁浅2》，`Frostpunk` 返回《冰汽时代2》。

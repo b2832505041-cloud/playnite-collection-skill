@@ -7,8 +7,8 @@
  *   --games      out/playnite_games.json   原始库（必须，含 Id/Name/Source）
  *   --steam      out/steam_meta.json       Steam 官方元数据（fetch-steam-meta 产出）
  *   --confirmed  out/confirmed.json        appid 确认结果（fetch-appdetails 产出）
- *   --names      map/manual_names.json     {"原名": "中文名"} 人工名（优先级最高）
- *   --versions   map/version_labels.json   {"原名": "带版本后缀的中文名"}
+ *   --names      map/manual_names.json     {"原名": "本地化名"} 人工名（优先级最高）
+ *   --versions   map/version_labels.json   {"原名": "带版本后缀的本地化名"}
  *   --ids        map/manual_ids.json       {"原名": "游戏GUID"} 用于消歧（重名条目）
  *   --map        map/classification.tsv    人工分类表：Name<TAB>类型1;类型2[<TAB>来源]
  *   --outdir     out
@@ -55,7 +55,7 @@ const LABELS = {
   platformPrefix: "S 平台-"
 };
 
-/** 把各种日期格式统一成 ISO yyyy-MM-dd（Steam 中文日期 / ISO / 仅年份） */
+/** 把各种日期格式统一成 ISO yyyy-MM-dd（Steam 返回日期 / ISO / 仅年份） */
 function toIsoDate(s: string): string {
   const cn = String(s || "").match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
   if (cn) return cn[1] + "-" + cn[2].padStart(2, "0") + "-" + cn[3].padStart(2, "0");
@@ -121,7 +121,7 @@ for (const g of list) {
     if (!pub) pub = (cf.pub || []).join(";");
   }
 
-  // 去掉「中文 + 重复英文」里的英文尾巴（仅当英文确实是原名开头）
+  // 去掉「本地化名 + 重复英文」里的英文尾巴（仅当英文确实是原名开头）
   if (cn && !versionLabels[name]) {
     const m = cn.match(/^([\u4e00-\u9fff].*?)\s+([A-Za-z][A-Za-z0-9 .:&®™\-]*)$/);
     if (m && m[1].trim().length >= 2 && name.toLowerCase().startsWith(m[2].trim().toLowerCase())) cn = m[1].trim();
@@ -176,7 +176,7 @@ writeTsv(path.join(outDir, "游戏数据.tsv"), ["Id", "Name", "Source", "LocalN
 const names = new Map<string, number>();
 for (const r of rows) names.set(r.cn || r.name, (names.get(r.cn || r.name) || 0) + 1);
 const dups = [...names.entries()].filter(([, c]) => c > 1);
-console.log(`共 ${rows.length} 条；有中文名 ${rows.filter(r => r.cn).length}；有分类 ${nameList.length}；有简介 ${rows.filter(r => r.desc).length}`);
+console.log(`共 ${rows.length} 条；有本地化名 ${rows.filter(r => r.cn).length}；有分类 ${nameList.length}；有简介 ${rows.filter(r => r.desc).length}`);
 console.log("重名组:", dups.length, dups.slice(0, 5).map(([n]) => n).join(", "));
 if (pending.length) console.log("未分类（前 10）:", pending.slice(0, 10).join(" | "));
 console.log(`写出 ${path.join(outDir, "分类.tsv")} 与 ${path.join(outDir, "游戏数据.tsv")}`);
