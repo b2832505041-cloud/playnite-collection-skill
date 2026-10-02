@@ -70,24 +70,24 @@ namespace PlayniteCollectionTool
                 string stamp = File.Exists(stampPath) ? File.ReadAllText(stampPath, Encoding.UTF8).Trim() : "";
                 if (stamp == ApplyVersion) { WriteLog("自动应用跳过：已是 " + ApplyVersion); return; }
 
-                if (File.Exists(catPath))
-                {
-                    WriteLog("开始自动应用分类...");
-                    ApplyCategories(catPath, false);
-                    WriteLog("分类自动应用完成");
-                }
                 if (File.Exists(metaPath))
                 {
                     WriteLog("开始自动应用元数据...");
                     ApplyMeta(metaPath, false);
                     WriteLog("元数据自动应用完成");
                 }
+                if (File.Exists(catPath))
+                {
+                    WriteLog("开始自动应用分类...");
+                    ApplyCategories(catPath, false);
+                    WriteLog("分类自动应用完成");
+                }
                 File.WriteAllText(stampPath, ApplyVersion, new UTF8Encoding(false));
             }
             catch (Exception ex)
             {
                 WriteLog("自动应用失败: " + ex.ToString());
-                try { PlayniteApi.Dialogs.ShowErrorMessage("自动应用失败: " + ex.Message + "\n详见 ExtensionsData\\pct-game-organizer\\tool_log.txt", "Playnite 库整理"); } catch { }
+                try { PlayniteApi.Dialogs.ShowErrorMessage("自动应用失败: " + ex.Message + "\n详见 ExtensionsData\\playnite-collection-tool\\tool_log.txt", "Playnite 库整理"); } catch { }
             }
         }
         // ================= 通用工具 =================
@@ -215,11 +215,7 @@ namespace PlayniteCollectionTool
             return s;
         }
 
-        private static readonly Dictionary<string, int> KnownSourceIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-        // 只对"库插件/商店/完成状态/平台"以及常见官方名做替换，避免误伤厂商里的自造词
-        private static readonly HashSet<string> LocalizableKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GameSource", "CompletionStatus", "Platform", "Region", "AgeRating", "Series", "Genre", "Tag", "Feature" };
-
+        // 只对"来源/完成状态/平台"做替换，避免误伤厂商里的自造词
         private void LocalizeAllLookups(bool dryRun, List<string> report)
         {
             foreach (var src in PlayniteApi.Database.Sources)
@@ -343,7 +339,7 @@ namespace PlayniteCollectionTool
                         if (release.Length > 0)
                         {
                             DateTime d;
-                            if (DateTime.TryParse(release, out d) && DateStr(g.ReleaseDate) != d.ToString("yyyy-MM-dd")) { g.ReleaseDate = new Playnite.SDK.Models.ReleaseDate(d); changed = true; dateFilled++; }
+                            if (DateTime.TryParse(release, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d) && DateStr(g.ReleaseDate) != d.ToString("yyyy-MM-dd")) { g.ReleaseDate = new Playnite.SDK.Models.ReleaseDate(d); changed = true; dateFilled++; }
                         }
                         if (desc.Length > 1 && !string.Equals(desc, g.Description, StringComparison.Ordinal)) { g.Description = desc; changed = true; descChanged++; }
                         if (series.Length > 0)
@@ -418,8 +414,8 @@ namespace PlayniteCollectionTool
             if (a == null && b == null) return true;
             if (a == null || b == null) return false;
             if (a.Count != b.Count) return false;
-            for (int i = 0; i < a.Count; i++) if (a[i] != b[i]) return false;
-            return true;
+            var sa = new HashSet<Guid>(a);
+            return sa.SetEquals(b);
         }
 
         private List<Guid> EnsureGenres(string[] names)
@@ -489,11 +485,12 @@ namespace PlayniteCollectionTool
                         if (g == null) continue;
                         if (!string.IsNullOrEmpty(rec.name)) g.Name = rec.name;
                         DateTime d;
-                        if (DateTime.TryParse(rec.releaseDate, out d)) g.ReleaseDate = new Playnite.SDK.Models.ReleaseDate(d); else g.ReleaseDate = null;
+                        if (DateTime.TryParse(rec.releaseDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d)) g.ReleaseDate = new Playnite.SDK.Models.ReleaseDate(d); else g.ReleaseDate = null;
                         if (!string.IsNullOrEmpty(rec.genres)) g.GenreIds = EnsureGenres(rec.genres.Split(';'));
                         if (!string.IsNullOrEmpty(rec.developers)) g.DeveloperIds = EnsureCompanies(rec.developers.Split(';'));
                         if (!string.IsNullOrEmpty(rec.publishers)) g.PublisherIds = EnsureCompanies(rec.publishers.Split(';'));
                         if (!string.IsNullOrEmpty(rec.series)) g.SeriesIds = EnsureSeries(rec.series.Split(';'));
+                        if (!string.IsNullOrEmpty(rec.description)) g.Description = rec.description;
                         PlayniteApi.Database.Games.Update(g);
                         cnt++;
                     }
@@ -504,7 +501,7 @@ namespace PlayniteCollectionTool
             catch (Exception ex) { WriteLog("撤销失败: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("撤销失败: " + ex.Message, "Playnite 库整理"); }
         }
 
-        private class BkRec { public string id; public string name; public string releaseDate; public string genres; public string developers; public string publishers; public string series; }
+        private class BkRec { public string id; public string name; public string releaseDate; public string genres; public string developers; public string publishers; public string series; public string description; }
 
         private static List<BkRec> ParseBackup(string text)
         {
@@ -522,6 +519,7 @@ namespace PlayniteCollectionTool
                 rec.developers = f.Length > 4 ? f[4] : "";
                 rec.publishers = f.Length > 5 ? f[5] : "";
                 rec.series = f.Length > 6 ? f[6] : "";
+                rec.description = f.Length > 7 ? f[7] : "";
                 list.Add(rec);
             }
             return list;
@@ -668,7 +666,10 @@ namespace PlayniteCollectionTool
             {
                 foreach (var r in rows)
                 {
-                    var cands = gameList.Where(g => string.Equals(g.Name, r.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+                    string matchName = r.Name;
+                    string mappedName;
+                    if (renameMap != null && renameMap.TryGetValue(r.Name, out mappedName)) matchName = mappedName;
+                    var cands = gameList.Where(g => string.Equals(g.Name, matchName, StringComparison.OrdinalIgnoreCase)).ToList();
                     if (cands.Count == 0) { unmatched.Add(r.Name); continue; }
 
                     if (cands.Count > 1 && !string.IsNullOrEmpty(r.Source))

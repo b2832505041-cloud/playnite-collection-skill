@@ -34,6 +34,15 @@ const versionLabels = readJson<Record<string, string>>(String(args.versions || "
 const manualIds = readJson<Record<string, string>>(String(args.ids || "map/manual_ids.json"), {});
 
 const steamByPlaynite: Record<string, any> = {};
+
+/** 把各种日期格式统一成 ISO yyyy-MM-dd（Steam 中文日期 / ISO / 仅年份） */
+function toIsoDate(s: string): string {
+  const cn = String(s || "").match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (cn) return cn[1] + "-" + cn[2].padStart(2, "0") + "-" + cn[3].padStart(2, "0");
+  const iso = String(s || "").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return iso[1] + "-" + iso[2].padStart(2, "0") + "-" + iso[3].padStart(2, "0");
+  return "";
+}
 for (const v of Object.values(steam)) steamByPlaynite[v.playniteName] = v;
 
 // ---------- 分类 ----------
@@ -102,11 +111,12 @@ for (const g of list) {
   const cls = classification[key] || classification[normalizeName(name) + "||"];
   if (!cls) pending.push(name);
   const year = (String(date).match(/(19|20)\d\d/) || [""])[0];
+  const isoDate = toIsoDate(date);
 
   rows.push({
     id: manualIds[name] || g.Id || "",
     name, source: src, cn,
-    date: date || (year ? year + "-01-01" : ""),
+    date: isoDate || (year ? year + "-01-01" : ""),
     genres, dev, pub, desc,
     cats: cls ? cls.cats : "",
     tags: [
