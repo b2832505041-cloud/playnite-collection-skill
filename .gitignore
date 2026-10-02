@@ -1,0 +1,22 @@
+# 使用者数据 —— 永远不要提交
+out/
+backup/
+tmp/
+*.log
+
+# 本机映射表（可能含真实游戏库信息）
+map/classification.tsv
+map/manual_ids.json
+map/manual_names.json
+
+# 构建产物
+plugin/bin/
+*.dll
+*.pdb
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

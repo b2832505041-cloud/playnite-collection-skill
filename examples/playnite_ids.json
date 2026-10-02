@@ -1,0 +1,12 @@
+[
+  {
+    "Name": "Sample Puzzle Adventure",
+    "Source": "Steam",
+    "GameId": "123456"
+  },
+  {
+    "Name": "Sample Tactics Game",
+    "Source": "Epic",
+    "GameId": "0123456789abcdef0123456789abcdef"
+  }
+]

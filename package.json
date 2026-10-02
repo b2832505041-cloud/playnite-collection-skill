@@ -1,0 +1,22 @@
+{
+  "name": "playnite-collection-skill",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Playnite 游戏库分类与中文化 Skill：导出库、抓官方中文元数据、生成分类/标签并写入。",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "export": "node scripts/export-playnite.ps1",
+    "ids": "node scripts/collect-ids.ps1"
+  },
+  "keywords": [
+    "playnite",
+    "skill",
+    "game-library",
+    "categorize",
+    "localization"
+  ]
+}
