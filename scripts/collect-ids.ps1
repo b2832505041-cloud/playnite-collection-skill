@@ -21,7 +21,14 @@ param(
 $ErrorActionPreference = "Stop"
 if (-not $DbDir) { $DbDir = Join-Path $env:APPDATA "Playnite\library" }
 if (-not $PlaynitePath) {
-  foreach ($c in @((Join-Path $env:ProgramFiles "Playnite"), (Join-Path ${env:ProgramFiles(x86)} "Playnite"), "C:\Playnite", "D:\Playnite", "E:\Playnite")) {
+  $cands = @((Join-Path $env:ProgramFiles "Playnite"), (Join-Path ${env:ProgramFiles(x86)} "Playnite"), (Join-Path $env:LOCALAPPDATA "Playnite"))
+  # 遍历所有盘符的常见安装位置，避免漏掉自定义路径（如 E:\Program Files\Playnite）
+  foreach ($d in (Get-PSDrive -PSProvider FileSystem).Root) {
+    $cands += (Join-Path $d "Playnite")
+    $cands += (Join-Path $d "Program Files\Playnite")
+    $cands += (Join-Path $d "Program Files (x86)\Playnite")
+  }
+  foreach ($c in $cands) {
     if ($c -and (Test-Path (Join-Path $c "Playnite.SDK.dll"))) { $PlaynitePath = $c; break }
   }
 }
