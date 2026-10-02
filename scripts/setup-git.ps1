@@ -15,7 +15,6 @@ $ProgressPreference = "SilentlyContinue"
 $existing = Get-Command git -ErrorAction SilentlyContinue
 if ($existing) { Write-Host "系统已有 git: $($existing.Source)"; & git --version; exit 0 }
 
-$zipUrl = "https://registry.npmmirror.com/-/binary/git-for-windows/v$Version/MinGit-$($Version.Split('.')[0]).0-64-bit.zip"
 $zipUrl = "https://registry.npmmirror.com/-/binary/git-for-windows/v$Version/MinGit-" + ($Version -replace "\.windows\.\d+$","") + "-64-bit.zip"
 Write-Host "下载 $zipUrl"
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
@@ -28,4 +27,5 @@ if (-not (Test-Path $gitExe)) { throw "解压后没找到 cmd\git.exe" }
 & $gitExe --version
 Write-Host ""
 Write-Host "已安装: $gitExe"
-Write-Host "把它加入 PATH（当前会话）: $env:PATH = \"$InstallDir\cmd;$env:PATH\""
+$pathHint = '$env:PATH = "' + $InstallDir + '\cmd;$env:PATH"'
+Write-Host ("把它加入 PATH（当前会话）: " + $pathHint)
