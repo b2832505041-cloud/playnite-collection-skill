@@ -5,7 +5,7 @@
  * 输出: { "<原始名>": { source, results: [{appid, name}] } }
  */
 import * as fs from "node:fs";
-import { delay, fetchWithRetry, hasCJK, parseArgs, pool, writeJson } from "./lib.ts";
+import { delay, fetchWithRetry, isTargetLanguage, parseArgs, pool, writeJson } from "./lib.ts";
 
 const args = parseArgs();
 const gamesFile = String(args.games || "out/playnite_games.json");
@@ -15,14 +15,6 @@ const concurrency = Number(args.concurrency || 4);
 const lang = String(args.lang || "schinese");
 const cc = String(args.cc || "cn");
 
-/** 判断名字是否已经使用了目标语言文字（用于跳过已本地化的游戏）。
- *  目标为中日韩文时看是否含 CJK；目标为英文时看是否已是纯拉丁字母。 */
-function isTargetScript(name: string): boolean {
-  if (lang === "english" || lang === "german" || lang === "french" || lang === "italian" || lang === "spanish" || lang === "russian") {
-    return !hasCJK(name);
-  }
-  return hasCJK(name);
-}
 
 const games = JSON.parse(fs.readFileSync(gamesFile, "utf8").replace(/^\uFEFF/, "")).Games || [];
 let skippedNames: string[] = [];
@@ -30,7 +22,7 @@ try {
   const meta = JSON.parse(fs.readFileSync(skipFile, "utf8"));
   skippedNames = Object.values(meta).map((v: any) => v.playniteName);
 } catch { /* 没有就全量处理 */ }
-const skip = new Set<string>([...skippedNames, ...games.filter((g: any) => isTargetScript(g.Name)).map((g: any) => g.Name)]);
+const skip = new Set<string>([...skippedNames, ...games.filter((g: any) => isTargetLanguage(g.Name, lang)).map((g: any) => g.Name)]);
 const need = games.filter((g: any) => !skip.has(g.Name));
 console.log("待搜索 (lang=" + lang + "):", need.length);
 

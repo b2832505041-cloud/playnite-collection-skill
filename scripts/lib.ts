@@ -30,11 +30,62 @@ export function normalizeName(s: string): string {
     .toLowerCase()
     .replace(/[™®©]/g, "")
     .replace(/\b(game of the year|goty|definitive|complete|enhanced|remastered|deluxe|ultimate|legendary|standard|anniversary|edition|remaster|collection|demo|beta|prologue|test|public testing|open beta|tech beta|legacy mode|expansion)\b/g, " ")
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 export function hasCJK(s: string): boolean {
   return /[\u4e00-\u9fff]/.test(s || "");
+}
+
+/**
+ * 判断一个名字是否已经使用了目标语言的文字（用于跳过已本地化的游戏）。
+ * 每种语言用各自的字符集，互不混用：
+ *   - 中文(简/繁) 看汉字
+ *   - 日文 看平/片假名（不把汉字当中文误判成日文；纯汉字日文名会多查一次，由后续 build 阶段兜底）
+ *   - 韩文 看谚文
+ *   - 俄文 看西里尔字母
+ *   - 英/德/法/意/西 看"纯拉丁字母且不含中日韩俄文字"
+ * 判断不了的语言返回 false（即不跳过，全部走 Steam 目标语言名再比较）。
+ *
+ * Returns true if the name already uses the target language's script.
+ */
+export function isTargetLanguage(name: string, lang: string): boolean {
+  const n = String(name || "");
+  const other = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af\u0400-\u04ff]/;
+  switch ((lang || "").toLowerCase()) {
+    case "schinese":
+    case "tchinese":
+    case "zh":
+    case "zh-cn":
+    case "zh-tw":
+      return /[\u4e00-\u9fff]/.test(n);
+    case "japanese":
+    case "ja":
+      return /[\u3040-\u30ff]/.test(n);
+    case "koreana":
+    case "ko":
+      return /[\uac00-\ud7af]/.test(n);
+    case "russian":
+    case "ru":
+      return /[\u0400-\u04ff]/.test(n);
+    case "english":
+    case "en":
+    case "german":
+    case "de":
+    case "french":
+    case "fr":
+    case "italian":
+    case "it":
+    case "spanish":
+    case "es":
+    case "portuguese":
+    case "pt":
+    case "polish":
+    case "pl":
+      return /[A-Za-z]/.test(n) && !other.test(n);
+    default:
+      return false;
+  }
 }
 
 /** 清洗 Steam 返回的官方名：去商标符号、去结尾年份括号、去多余空格 */

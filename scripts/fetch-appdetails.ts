@@ -6,7 +6,7 @@
  * 用法: node scripts/fetch-appdetails.ts --candidates out/steam_suggest.json --out out/confirmed.json
  */
 import * as fs from "node:fs";
-import { fetchWithRetry, hasCJK, parseArgs, pool, writeJson } from "./lib.ts";
+import { fetchWithRetry, isTargetLanguage, parseArgs, pool, writeJson } from "./lib.ts";
 
 const args = parseArgs();
 const outFile = String(args.out || "out/confirmed.json");
@@ -50,7 +50,7 @@ await pool(jobs, concurrency, async (job, i) => {
       out[job.key] = {
         source: job.source || "",
         appid,
-        cnName: hasCJK(d.name) ? d.name : "",
+        localName: isTargetLanguage(d.name, lang) ? d.name : "",
         steamName: d.name || "",
         release: (d.release_date && d.release_date.date) || "",
         desc: d.short_description || "",
@@ -65,5 +65,5 @@ await pool(jobs, concurrency, async (job, i) => {
 });
 
 writeJson(outFile, out);
-const withCn = Object.values(out).filter((v: any) => v.cnName).length;
-console.log(`完成：${Object.keys(out).length} 条确认，其中带中文名 ${withCn} 条 -> ${outFile}`);
+const withLocal = Object.values(out).filter((v: any) => v.localName).length;
+console.log(`完成：${Object.keys(out).length} 条确认，其中带目标语言名 ${withLocal} 条 -> ${outFile}`);

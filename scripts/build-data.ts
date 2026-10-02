@@ -22,14 +22,12 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { cleanOfficialName, hasCJK, normalizeName, parseArgs, readJson, writeTsv } from "./lib.ts";
+import { cleanOfficialName, isTargetLanguage, normalizeName, parseArgs, readJson, writeTsv } from "./lib.ts";
 
 const args = parseArgs();
 const outDir = String(args.outdir || "out");
 const lang = String(args.lang || "schinese");
-// 目标语言字符集判断：目标为英文系语言时，纯拉丁字母即视为"已是目标语言"；否则看是否含 CJK
-const isTargetScript = (s: string): boolean =>
-  ["english", "german", "french", "italian", "spanish", "russian"].includes(lang) ? !hasCJK(s) : hasCJK(s);
+
 const games = readJson<any[]>(path.join(outDir, "playnite_games.json")) as any;
 const list: any[] = games?.Games || games;
 const steam = readJson<Record<string, any>>(String(args.steam || path.join(outDir, "steam_meta.json")), {});
@@ -105,8 +103,8 @@ for (const g of list) {
 
   if (manualNames[name]) cn = cleanOfficialName(manualNames[name]);
   if (versionLabels[name]) cn = versionLabels[name];
-  if (!cn && cf && cf.cnName) cn = cleanOfficialName(cf.cnName);
-  if (!cn && sm && isTargetScript(sm.cnName)) cn = cleanOfficialName(sm.cnName);
+  if (!cn && cf && cf.localName && isTargetLanguage(cf.localName, lang) && normalizeName(cf.localName) !== normalizeName(name)) cn = cleanOfficialName(cf.localName);
+  if (!cn && sm && sm.localName && isTargetLanguage(sm.localName, lang) && normalizeName(sm.localName) !== normalizeName(name)) cn = cleanOfficialName(sm.localName);
 
   if (sm) {
     date = sm.releaseDate || "";

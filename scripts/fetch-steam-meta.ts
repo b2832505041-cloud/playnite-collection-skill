@@ -19,7 +19,7 @@ const targets = rows.filter(r => r.Source === "Steam" && /^\d+$/.test(String(r.G
 console.log("待抓取 Steam 条目:", targets.length);
 
 type Meta = {
-  appid: string; playniteName: string; cnName: string; type: string;
+  appid: string; playniteName: string; localName: string; type: string;
   developers: string[]; publishers: string[]; releaseDate: string;
   genres: string[]; categories: string[]; desc: string;
 };
@@ -36,7 +36,7 @@ async function fetchOne(row: IdRow): Promise<Meta | null> {
   return {
     appid,
     playniteName: row.Name,
-    cnName: x.name || "",
+    localName: x.name || "",
     type: x.type || "",
     developers: x.developers || [],
     publishers: x.publishers || [],
