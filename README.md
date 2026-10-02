@@ -44,6 +44,49 @@ node scripts\fetch-steam-meta.ts --input .\out\playnite_ids.json --out .\out\ste
 
 详细的 Agent 执行步骤见 [SKILL.md](SKILL.md)，踩坑记录见 [docs/pitfalls.md](docs/pitfalls.md)。
 
+## 环境要求
+
+| 依赖 | 版本 | 说明 |
+|---|---|---|
+| Windows | 10/11 | 插件与导出脚本依赖 Playnite |
+| Playnite | 10.x（32 位） | 必须安装并至少导入过一个商店库 |
+| .NET Framework | 4.x | 系统自带 `csc.exe` 即可，**不需要 .NET SDK** |
+| Node.js | ≥ 22.6 | 跑数据脚本（仅用内置模块，无 npm 依赖） |
+| git | 可选 | 只用于版本控制；没装可跑 `scripts\setup-git.ps1` 拉便携版 |
+
+## 从零开始（完整流程）
+
+```powershell
+# 1. 编译 + 安装插件
+powershell -ExecutionPolicy Bypass -File scripts\build-plugin.ps1
+
+# 2. 关闭 Playnite 并导出游戏库
+powershell -ExecutionPolicy Bypass -File scripts\export-playnite.ps1 -OutDir out
+
+# 3. 导出 Id/来源清单（供抓元数据用）
+powershell -ExecutionPolicy Bypass -File scripts\collect-ids.ps1 -Mode ids -OutDir out
+
+# 4. 抓 Steam 国区官方中文元数据
+node scripts\fetch-steam-meta.ts --ids out/playnite_ids.json --out out/steam_meta.json
+
+# 5. 为还没有中文名的游戏找候选，并确认
+node scripts\suggest-steam.ts --games out/playnite_games.json --skip-names out/steam_meta.json --out out/steam_suggest.json
+node scripts\fetch-appdetails.ts --candidates out/steam_suggest.json --out out/confirmed.json
+
+# 6. 准备人工映射表（参考 examples/）
+#    map/classification.tsv、map/manual_names.json、map/version_labels.json、map/manual_ids.json
+
+# 7. 汇总生成两个写入文件
+node scripts\build-data.ts --map map/classification.tsv --outdir out
+
+# 8. 拷进 Playnite 数据目录，重启 Playnite 自动应用
+copy out\分类.tsv      "$env:APPDATA\Playnite\ExtensionsData\playnite-collection-tool\"
+copy out\游戏数据.tsv  "$env:APPDATA\Playnite\ExtensionsData\playnite-collection-tool\"
+
+# 9. 校验结果
+powershell -ExecutionPolicy Bypass -File scripts\collect-ids.ps1 -Mode verify
+```
+
 ## 目录
 
 | 路径 | 说明 |
