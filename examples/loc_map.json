@@ -1,0 +1,18 @@
+{
+  "_comment": "本地化覆盖表。只需覆盖你想改的键。键=Playnite 内置的英文名，值=目标语言名称。放在 ExtensionsData\\playnite-collection-tool\\loc_map.json",
+  "_example_en": "把界面字段名翻成英文（默认是简体中文）：",
+  "Epic": "Epic Games Store",
+  "Amazon Games": "Amazon Games",
+  "Battle.net": "Battle.net",
+  "Ubisoft Connect": "Ubisoft Connect",
+  "Microsoft Store": "Microsoft Store",
+  "Not Played": "Not Played",
+  "Played": "Played",
+  "Playing": "Playing",
+  "Completed": "Completed",
+  "Beaten": "Beaten",
+  "Abandoned": "Abandoned",
+  "On Hold": "On Hold",
+  "Plan to Play": "Plan to Play",
+  "Played for a bit": "Played for a bit"
+}

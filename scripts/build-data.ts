@@ -1,7 +1,7 @@
 /**
  * 汇总所有来源，生成两个给 Playnite 插件用的文件：
  *   - 分类.tsv   Name<TAB>Source<TAB>Categories<TAB>Tags
- *   - 游戏数据.tsv  Id<TAB>Name(原名)<TAB>Source<TAB>中文名<TAB>ReleaseDate<TAB>Genres<TAB>Developers<TAB>Publishers<TAB>Description
+ *   - 游戏数据.tsv  Id<TAB>Name(原名)<TAB>Source<TAB>LocalName<TAB>ReleaseDate<TAB>Genres<TAB>Developers<TAB>Publishers<TAB>Description
  *
  * 数据来源（都用 --xxx 指定，缺省视为没有）：
  *   --games      out/playnite_games.json   原始库（必须，含 Id/Name/Source）
@@ -12,9 +12,10 @@
  *   --ids        map/manual_ids.json       {"原名": "游戏GUID"} 用于消歧（重名条目）
  *   --map        map/classification.tsv    人工分类表：Name<TAB>类型1;类型2[<TAB>来源]
  *   --outdir     out
+ *   --lang       目标语言（Steam 代码：schinese/tchinese/japanese/koreana/english…，默认 schinese）
  *
  * 规则：
- *   1) 中文名优先级：人工 > 版本标签 > 确认结果 > Steam 官方名 > 人工表 > 保留原名
+ *   1) 本地化名优先级：人工 > 版本标签 > 确认结果 > Steam 官方名 > 人工表 > 保留原名
  *   2) 同平台不同版本：加版本后缀（由 version_labels 提供）
  *   3) 跨平台同名：自动追加（来源）
  *   4) 输出前校验：最终名称不得重复
@@ -25,6 +26,10 @@ import { cleanOfficialName, hasCJK, normalizeName, parseArgs, readJson, writeTsv
 
 const args = parseArgs();
 const outDir = String(args.outdir || "out");
+const lang = String(args.lang || "schinese");
+// 目标语言字符集判断：目标为英文系语言时，纯拉丁字母即视为"已是目标语言"；否则看是否含 CJK
+const isTargetScript = (s: string): boolean =>
+  ["english", "german", "french", "italian", "spanish", "russian"].includes(lang) ? !hasCJK(s) : hasCJK(s);
 const games = readJson<any[]>(path.join(outDir, "playnite_games.json")) as any;
 const list: any[] = games?.Games || games;
 const steam = readJson<Record<string, any>>(String(args.steam || path.join(outDir, "steam_meta.json")), {});
@@ -34,6 +39,23 @@ const versionLabels = readJson<Record<string, string>>(String(args.versions || "
 const manualIds = readJson<Record<string, string>>(String(args.ids || "map/manual_ids.json"), {});
 
 const steamByPlaynite: Record<string, any> = {};
+
+/**
+ * 分类/标签前缀 —— 按你的目标语言修改这里即可。
+ * 例：英文可改成
+ *   LABELS.statusPlaying = "A01 Status-Playing"
+ *   LABELS.seriesPrefix = "B Series-"
+ *   LABELS.featureCoop = "F01 Feature-Coop"
+ *   ...
+ */
+const LABELS = {
+  statusPlaying: "A01 状态-正在玩",
+  seriesPrefix: "B 系列-",
+  featureCoop: "F01 特性-多人合作",
+  featureOnline: "F02 特性-在线对战",
+  featureSplit: "F03 特性-本地同屏",
+  platformPrefix: "S 平台-"
+};
 
 /** 把各种日期格式统一成 ISO yyyy-MM-dd（Steam 中文日期 / ISO / 仅年份） */
 function toIsoDate(s: string): string {
@@ -50,9 +72,9 @@ let classification: Record<string, { cats: string; src: string }> = {};
 if (args.map && fs.existsSync(String(args.map))) {
   const lines = fs.readFileSync(String(args.map), "utf8").replace(/^\uFEFF/, "").split(/\r?\n/).filter(l => l.trim() && !l.startsWith("#"));
   const header = lines[0].split("\t");
-  const iName = header.indexOf("Name");
+  const iName = Math.max(header.indexOf("Name"), header.indexOf("名称"));
   const iCat = Math.max(header.indexOf("Categories"), header.indexOf("类型"));
-  const iSrc = header.indexOf("Source");
+  const iSrc = Math.max(header.indexOf("Source"), header.indexOf("来源"));
   for (const line of lines.slice(1)) {
     const f = line.split("\t");
     if (iName < 0 || iCat < 0) continue;
@@ -84,7 +106,7 @@ for (const g of list) {
   if (manualNames[name]) cn = cleanOfficialName(manualNames[name]);
   if (versionLabels[name]) cn = versionLabels[name];
   if (!cn && cf && cf.cnName) cn = cleanOfficialName(cf.cnName);
-  if (!cn && sm && hasCJK(sm.cnName)) cn = cleanOfficialName(sm.cnName);
+  if (!cn && sm && isTargetScript(sm.cnName)) cn = cleanOfficialName(sm.cnName);
 
   if (sm) {
     date = sm.releaseDate || "";
@@ -120,12 +142,12 @@ for (const g of list) {
     genres, dev, pub, desc,
     cats: cls ? cls.cats : "",
     tags: [
-      g.IsInstalled ? "A01 状态-正在玩" : "",
-      ...String(g.Series || "").split(";").filter(Boolean).map((s: string) => "B 系列-" + s),
-      /Co-Operative/i.test(String(g.Features || "")) ? "F01 特性-多人合作" : "",
-      /Multiplayer/i.test(String(g.Features || "")) ? "F02 特性-在线对战" : "",
-      /Split Screen/i.test(String(g.Features || "")) ? "F03 特性-本地同屏" : "",
-      "S 平台-" + src
+      g.IsInstalled ? LABELS.statusPlaying : "",
+      ...String(g.Series || "").split(";").filter(Boolean).map((s: string) => LABELS.seriesPrefix + s),
+      /Co-Operative/i.test(String(g.Features || "")) ? LABELS.featureCoop : "",
+      /Multiplayer/i.test(String(g.Features || "")) ? LABELS.featureOnline : "",
+      /Split Screen/i.test(String(g.Features || "")) ? LABELS.featureSplit : "",
+      LABELS.platformPrefix + src
     ].filter(Boolean).join(";")
   });
 }
@@ -149,7 +171,7 @@ const nameList = rows.filter(r => r.cats);
 writeTsv(path.join(outDir, "分类.tsv"), ["Name", "Source", "Categories", "Tags"],
   nameList.map(r => [r.cn || r.name, r.source, r.cats, r.tags]));
 
-writeTsv(path.join(outDir, "游戏数据.tsv"), ["Id", "Name", "Source", "中文名", "ReleaseDate", "Genres", "Developers", "Publishers", "Description"],
+writeTsv(path.join(outDir, "游戏数据.tsv"), ["Id", "Name", "Source", "LocalName", "ReleaseDate", "Genres", "Developers", "Publishers", "Description"],
   rows.map(r => [r.id, r.name, r.source, r.cn || r.name, r.date, r.genres, r.dev, r.pub, r.desc]));
 
 // 重名自检

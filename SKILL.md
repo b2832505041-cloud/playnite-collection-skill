@@ -1,134 +1,125 @@
 ---
 name: playnite-collection
-description: 把 Playnite 游戏库整理成分类 + 标签，并把游戏名/简介/发行日期/类型/厂商中文化与补全（官方中文名优先取 Steam 国区），以可回滚的 Playnite 插件写入。当用户说“整理 Playnite 库/给 Playnite 分类/游戏名改中文/补全游戏信息”时使用。
+description: 把 Playnite 游戏库整理成分类+标签，并把游戏名/简介/发行日期/类型/厂商本地化到任意目标语言（默认简体中文，支持中英互换、日韩繁中等），以可回滚的插件写入。当用户说"整理 Playnite 库/给 Playnite 分类/游戏名改中文或改成英文/补全游戏信息"时使用。Organize a Playnite library into categories+tags and localize game metadata to any target language (default zh, supports zh↔en, ja/ko/zh-TW), written via a rollback-safe plugin.
 ---
 
-# Playnite 游戏库分类与中文化
+# Playnite 游戏库分类与本地化 / Playnite library categorization & localization
 
-把 Playnite 库整理成一套可筛选的**分类 + 标签**，并把元数据中文化 / 补全。写入通过自带的 Playnite 插件完成，
-**每批写入前备份、可一键回滚**，不修改游戏安装目录、启动动作、ID 等影响运行逻辑的字段。
+把 Playnite 库整理成可筛选的分类+标签，并把元数据本地化/补全到目标语言。
+Organize a Playnite library into filterable categories/tags, and localize/enrich metadata into a target language.
 
-## 何时使用
+## 何时使用 / When to use
 
-- 用户要求「整理 Playnite 游戏库」「按类型/系列分类」「把游戏名改成中文」「补全发行日期/简介/厂商」
-- 用户抱怨「库里一堆英文名」「有重复的名字」「筛选器里没有分类可用」
+- 用户要求"整理 Playnite 库""分类""把游戏名改成中文/英文/某语言""补全发行日期/简介/厂商"
+- "library is a mess""names are not in my language""duplicate names""no categories to filter"
 
-## 前置条件（开工前确认，缺什么问什么）
+## 前置确认 / Before starting (ask what's missing)
 
-1. **Playnite 已安装**且至少导入过一个商店库（Steam/Epic/GOG/Xbox/…）。
-2. **Windows + .NET Framework 4.x**：插件用系统自带 `csc` 编译，不需要 .NET SDK。
-3. **Node.js 18+**：跑数据脚本（无第三方依赖，只用内置模块）。
-4. 询问用户：**是否允许改游戏名称**（会把英文名改成中文）、**分类精细度**、**是否要隐藏工具/Demo 条目**。
-   —— 改名前必须让用户知情，因为名称是用户最直观的资产。
+1. Playnite 已安装并导入过商店库；Windows + .NET Framework 4.x；Node.js ≥ 22.6。
+2. **目标语言**：默认 `schinese`（简体中文）。用户要别的语言就传 `--lang`：
+   `tchinese` 繁体 / `japanese` 日文 / `koreana` 韩文 / `english` 英文（反向，中文名→英文）。
+   Target language: default `schinese`; pass `--lang` for others (`english` reverses zh→en).
+3. **是否允许改游戏名**：改名前必须让用户知情（名称是用户最直观的资产）。
+   Ask whether renaming games is OK.
 
-## 流程
+## 流程 / Workflow
 
-### 步骤 0：准备
+### 0. 编译安装插件 / Build & install
 
 ```powershell
-# 编译 + 安装插件
 powershell -ExecutionPolicy Bypass -File scripts\build-plugin.ps1
 ```
 
-### 步骤 1：导出游戏库
+### 1. 导出库 / Export library
 
-Playnite 运行时会**独占锁定** `games.db`，普通复制会失败。脚本会：
-
-1. 调 `Playnite.DesktopApp.exe --shutdown` 优雅退出（必要时等待/结束进程）；
-2. 复制 `%APPDATA%\Playnite\library\*.db` 到临时目录；
-3. 用 Playnite 自带的 `LiteDB.dll` 只读打开，导出 `playnite_games.json`（含 Id、Name、Source、Genres、Developers、Publishers、Series、Features、Platforms、ReleaseDate、Playtime、IsInstalled…）。
+Playnite 运行时独占锁定 `games.db`，脚本会 `--shutdown` 优雅退出后复制并读取。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\export-playnite.ps1 -OutDir .\out
 ```
 
-**汇报**：总数、各来源数量、已安装数量、有多少条没有中文名。等待确认。
+汇报：总数、各来源数量、已安装数、有多少条还没有目标语言名。
+Report: total, per-source count, installed count, how many lack a target-language name.
 
-### 步骤 2：设计分类体系
+### 2. 设计分类体系 / Design categories
 
-沿用「维度前缀」命名，便于在 Playnite 筛选器里排序：
+维度前缀（默认中文，可在 `build-data.ts` 顶部 `LABELS` 常量改成目标语言）：
+Dimension prefixes (default zh; edit `LABELS` in `build-data.ts` for another language):
 
-| 维度 | 落地方式 | 例子 |
+| 维度 Dim | 落地 How | 例子 Example |
 |---|---|---|
-| C 类型 | 标签（每款 1-2 个） | `C01 类型-动作`、`C08 类型-解谜` |
-| B 系列 | 标签 | `B 系列-Forza Horizon` |
-| E 其他 | 标签 | `E01 其他-工具软件`、`E02 其他-演示测试` |
-| F 特性 | 标签 | `F01 特性-多人合作`、`F02 特性-在线对战` |
-| S 平台 | 标签 | `S 平台-Steam` |
-| A 状态 | Playnite「完成状态」 | `正在玩`（只给已安装的） |
-| D 厂商 | Playnite 原生「开发商/发行商」 | 不重复打标签 |
+| C 类型 Type | 标签 tag（1-2 个） | `C01 类型-动作` |
+| B 系列 Series | 标签 tag | `B 系列-Forza Horizon` |
+| E 其他 Other | 标签 tag | `E01 其他-工具软件` / `E02 其他-演示测试` |
+| F 特性 Feature | 标签 tag | `F01 特性-多人合作` `F02 特性-在线对战` `F03 特性-本地同屏` |
+| S 平台 Platform | 标签 tag | `S 平台-Steam` |
+| A 状态 Status | 完成状态 completion status | `正在玩`（仅已安装 installed only） |
+| D 厂商 Company | 原生字段 native field | 不重复打标签 |
 
-规则：
-- **每款游戏至少一个 C 类型**；工具软件（OBS、ShareX、3DMark…）只给 `E01`，不给 C。
-- Demo / Beta / 测试服 / 特典给 `E02 其他-演示测试`。
-- 编号在类目文档里唯一、连续；兜底类用最大号（`C99`）。
-- **重名规则**（必须遵守）：
-  - 同一作品的版本条目加**版本后缀**：`示例游戏 第2集`、`示例游戏 技术测试版`、`示例竞速 Demo`；
-  - 跨平台同一游戏加**（来源）后缀**：`示例竞速（Steam）` / `（Xbox）`、`示例网游（Epic）`；
-  - 生成后必须校验「最终名称无重复」，重复的自动补后缀。
+规则 Rules：
+- 每款至少一个 C 类型；工具软件只给 E01 不给 C。At least one C type; tools get E01 only.
+- Demo/Beta/测试服/特典给 E02。Demos/betas/test servers get E02.
+- **重名规则（必须遵守）Duplicate rules (mandatory)**：
+  - 同作品不同版本加版本后缀：`示例游戏 第2集`、`示例游戏 技术测试版`、`示例竞速 Demo`
+  - 跨平台同游戏加（来源）后缀：`示例竞速（Steam）` / `（Xbox）`
+  - 生成后必须校验"最终名称无重复"，重复自动补后缀。
 
-### 步骤 3：中文化元数据
+### 3. 本地化元数据 / Localize metadata
 
-优先级（从高到低）：
+优先级 Priority（高→低）：人工表 > 版本标签 > 确认结果 > Steam 目标语言区官方名 > 人工对照 > 保留原名。
+manual > version labels > confirmed > Steam target-locale name > manual map > keep original.
 
-1. 用户在人工表里指定的名字（`map/manual_names.json`）
-2. **Steam 国区商店页官方中文名**：`https://store.steampowered.com/api/appdetails?appids=<id>&cc=cn&l=schinese`
-3. Steam 搜索建议（`/search/suggest?...&cc=cn&l=schinese`）命中同名游戏时取其中文名
-4. 知名游戏的人工对照表
-5. 都没有 → **保留原名**（不要机翻生造，不要给工具类硬翻）
+- Steam 商店：`https://store.steampowered.com/api/appdetails?appids=<id>&cc=<cc>&l=<lang>`
+- **续作误配**：搜前作名会命中续作，用「原名+年份+类型」交叉校验（见 docs/pitfalls.md）。
+- 官方名带 `™®©` 和版本尾巴要清洗；英文尾巴只在"确实是原名开头"时才裁掉。
+- 简介优先官方目标语言 `short_description`；没有就写一句 ≤40 字的玩法概述。
+- **中英互换**：目标 `english` 时，含 CJK 的名字才需要翻译，纯拉丁名跳过；目标 `schinese` 时相反。
 
-注意：
-- Steam 官方名会带 `™®©` 和版本后缀，落库前要清洗（去商标符号、去「- Episode 1」这类非本体后缀）。
-- **续作误配**是最常见的坑：搜前作名会命中续作（如 `Sample Game` → 《Sample Game 2》），要用「原名 + 年份 + 类型」交叉校验，见 `docs/pitfalls.md`。
-- 中文简介优先用 Steam 国区的 `short_description`；没有官方中文的写一句不超过 40 字的中文玩法概述。
+### 4. 写入 / Write（按 ID）
 
-### 步骤 4：写入 Playnite（按 ID）
-
-生成 `游戏数据.tsv`（列：`Id, Name(原名), Source, 中文名, ReleaseDate, Genres, Developers, Publishers, Description`）与
-`分类.tsv`（列：`Name, Source, Categories, Tags`），放进：
+生成 `游戏数据.tsv`（列：`Id, Name(原名), Source, LocalName, ReleaseDate, Genres, Developers, Publishers, Description`）与
+`分类.tsv`（`Name, Source, Categories, Tags`），放进：
 
 ```
 %APPDATA%\Playnite\ExtensionsData\playnite-collection-tool\
 ```
 
-插件会在 Playnite 启动时（`OnApplicationStarted`）自动应用，也可以从
-**主菜单 → 扩展 → Playnite 库整理** 手动触发：
+插件在 `OnApplicationStarted` 自动应用，也可从 **主菜单 → 扩展 → Playnite Collection Tool** 手动触发：
+- Apply categories/tags
+- Apply localized metadata
+- Revert all metadata changes
+- Export library data
+- Remove categories/tags (rollback)
 
-- 应用分类/标签
-- 应用元数据（名称/日期/类型/厂商/简介）
-- 撤销元数据改动（回滚到应用前）
-- 清除分类/标签（回滚）
+**关键实现约束（踩过的坑，务必保持）Hard constraints**：
+- 必须在 `OnApplicationStarted` 做，不能在构造函数（那时 Database.Games 是空的）。
+- **按游戏 ID（GUID）写入**，不要只按名字（改名后名字失配）。
+- 插件必须 **AnyCPU**（Playnite 是 32 位进程，x64 报 BadImageFormatException）。
+- 本地化映射 `LocMap` 键不可重复（大小写不敏感），否则静态构造抛异常；默认中文，可用 `loc_map.json` 覆盖成任意语言。
 
-**关键实现约束**（踩过的坑，务必保持）：
-- 必须在 `OnApplicationStarted` 里做，**不能在插件构造函数里**——构造函数阶段 `Database.Games` 还是空的。
-- **按游戏 ID（GUID）匹配写入**，不要只按名字匹配：改名后名字对不上会整批失配。
-- 插件程序集必须 **AnyCPU**（Playnite 是 32 位进程，x64 DLL 会报 `BadImageFormatException`）。
-- 本地化对照表（来源/完成状态/平台）是 `Dictionary<string,string>` 且大小写不敏感，**键不能重复**，否则静态构造函数抛异常导致整个插件失效。
-
-### 步骤 5：校验（必做）
-
-重新读库检查：
+### 5. 校验 / Verify
 
 ```text
-GAMES=<总数>  有分类=<全部>  有简介=<全部>  含中文名=<尽量高>  重复名称组数=0
+GAMES=<总数>  有分类=<全部>  有简介=<全部>  含目标语言名=<尽量高>  重复名称组数=0
 ```
 
-任何一项不达标都要排查后再汇报。汇报内容：分类数、标签数、中文名覆盖率、未翻译清单（哪些官方确实没有中文名）、回滚方式。
+汇报：分类数、标签数、本地化覆盖率、未翻译清单、回滚方式。
+Report: category/tag counts, localization coverage, untranslated list, rollback method.
 
-## 目录约定
+## 目录约定 / Directory
 
 ```
 project/
-  out/            导出与中间产物（不进版本控制）
-  map/            人工维护的映射表：classification.tsv / manual_names.json / manual_ids.json
-  backup/         每次写入前的 Playnite 数据库备份
-  scripts/        本 Skill 的脚本
-  plugin/         写入插件源码
+  out/            导出与中间产物（不进版本控制）/ exports & intermediates (git-ignored)
+  map/            人工映射表 / manual maps
+  backup/         写入前数据库备份 / pre-write DB backups
+  scripts/        脚本 / scripts
+  plugin/         写入插件源码 / plugin source
 ```
 
-## 通用守则
+## 通用守则 / General rules
 
-- **写入前必须备份** `%APPDATA%\Playnite\library\*.db`，并告知用户回滚方式。
-- 不把任何账号 ID、Cookie、Token 写进产出物或仓库。
-- 大库（500+）分批处理，每批写入后校验数量；名称去重必须在最后统一做。
+- 写入前必须备份 `%APPDATA%\Playnite\library\*.db`，并告知回滚方式。
+- 不把账号 ID、Cookie、Token 写进产出物或仓库。
+- 大库分批处理，每批写入后校验数量；名称去重最后统一做。
 - 遇到异常先查 `docs/pitfalls.md`。

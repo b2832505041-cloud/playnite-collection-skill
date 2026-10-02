@@ -1,4 +1,4 @@
-# 踩坑清单（都是实测踩过的）
+# 踩坑清单 / Pitfalls (all hit in practice)
 
 ## Playnite 数据库
 

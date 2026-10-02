@@ -1,6 +1,6 @@
-# 设计说明
+# 设计说明 / Design Notes
 
-## 为什么用「插件写入」而不是直接改数据库
+## 为什么用「插件写入」 / Why write via a plugin而不是直接改数据库
 
 | 方案 | 风险 |
 |---|---|
@@ -9,7 +9,7 @@
 
 插件是幂等的：数据文件没变、版本号没变时不会重复写入（`applied_version.txt` 标记）。
 
-## 数据流
+## 数据流 / Data flow
 
 ```
 games.db ──(export-playnite.ps1)──▶ playnite_games.json
@@ -24,7 +24,7 @@ map/manual_names.json / version_labels.json / manual_ids.json        │
                                                      Playnite 启动/手动触发 → 写入库
 ```
 
-## 分类维度约定
+## 分类维度约定 / Category dimension conventions
 
 统一用「维度前缀 + 编号 + 名称」，好处是在 Playnite 筛选器里按字母排序天然分组：
 
@@ -35,14 +35,14 @@ map/manual_names.json / version_labels.json / manual_ids.json        │
 - `S 平台-Steam`
 - `A01 状态-正在玩`（Playnite 完成状态，只给已安装）
 
-## 名称唯一化算法
+## 名称唯一化算法 / Name dedup algorithm
 
 1. 先算出每条的「期望名称」（中文名，或原名）
 2. 版本类条目（Demo/Beta/测试服/分集）由 `version_labels.json` 给出带后缀的名字
 3. 剩下的重复：第一个出现的加 `（来源）` 保持可辨识，后续逐一追加 `（来源）`，仍冲突则加序号
 4. 输出前再跑一次唯一性断言，有任何重复直接报错
 
-## 可回滚设计
+## 可回滚设计 / Rollback design
 
 - 写元数据前把每条游戏的旧值写入 `meta_backup.tsv`（Id + 名称 + 日期 + 各类 ID 串）
 - 菜单「撤销元数据改动」按该文件还原

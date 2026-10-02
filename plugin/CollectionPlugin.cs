@@ -21,7 +21,9 @@ namespace PlayniteCollectionTool
             Properties = new GenericPluginProperties { HasSettings = false };
             outDir = Path.Combine(api.Paths.ExtensionsDataPath, "playnite-collection-tool");
             try { Directory.CreateDirectory(outDir); } catch { }
-            WriteLog("插件构造函数执行成功，outDir=" + outDir);
+            LocMap = new Dictionary<string, string>(DefaultLocMap, StringComparer.OrdinalIgnoreCase);
+            LoadLocMapOverride();
+            WriteLog("Plugin constructed, outDir=" + outDir);
         }
 
         private static void WriteLog(string msg)
@@ -41,21 +43,21 @@ namespace PlayniteCollectionTool
             {
                 int n = 0;
                 foreach (var g in PlayniteApi.Database.Games) n++;
-                WriteLog("OnApplicationStarted 诊断：库中游戏数=" + n);
+                WriteLog("OnApplicationStarted diagnostics: game count=" + n);
                 TryAutoApply();
             }
-            catch (Exception ex) { WriteLog("OnApplicationStarted 失败: " + ex.ToString()); }
+            catch (Exception ex) { WriteLog("OnApplicationStarted failed: " + ex.ToString()); }
             base.OnApplicationStarted(args);
         }
 
         public override IEnumerable<MainMenuItem> GetMainMenuItems(GetMainMenuItemsArgs args)
         {
             var menu = new List<MainMenuItem>();
-            menu.Add(new MainMenuItem { MenuSection = "@Playnite 库整理", Description = "重新导入分类/标签（分类.tsv）", Action = a => DoImport() });
-            menu.Add(new MainMenuItem { MenuSection = "@Playnite 库整理", Description = "中文化/补充元数据（游戏数据.tsv）", Action = a => DoApplyMeta() });
-            menu.Add(new MainMenuItem { MenuSection = "@Playnite 库整理", Description = "撤销本插件对元数据的全部改动", Action = a => DoRevertMeta() });
-            menu.Add(new MainMenuItem { MenuSection = "@Playnite 库整理", Description = "导出当前游戏库数据", Action = a => DoExport() });
-            menu.Add(new MainMenuItem { MenuSection = "@Playnite 库整理", Description = "清除本插件分类/标签（回滚）", Action = a => DoClear() });
+            menu.Add(new MainMenuItem { MenuSection = "@Playnite Collection Tool", Description = "Apply categories/tags (分类.tsv)", Action = a => DoImport() });
+            menu.Add(new MainMenuItem { MenuSection = "@Playnite Collection Tool", Description = "Apply localized metadata (游戏数据.tsv)", Action = a => DoApplyMeta() });
+            menu.Add(new MainMenuItem { MenuSection = "@Playnite Collection Tool", Description = "Revert all metadata changes", Action = a => DoRevertMeta() });
+            menu.Add(new MainMenuItem { MenuSection = "@Playnite Collection Tool", Description = "Export library data", Action = a => DoExport() });
+            menu.Add(new MainMenuItem { MenuSection = "@Playnite Collection Tool", Description = "Remove categories/tags (rollback)", Action = a => DoClear() });
             return menu;
         }
 
@@ -68,26 +70,26 @@ namespace PlayniteCollectionTool
                 string metaPath = Path.Combine(outDir, "游戏数据.tsv");
                 string stampPath = Path.Combine(outDir, "applied_version.txt");
                 string stamp = File.Exists(stampPath) ? File.ReadAllText(stampPath, Encoding.UTF8).Trim() : "";
-                if (stamp == ApplyVersion) { WriteLog("自动应用跳过：已是 " + ApplyVersion); return; }
+                if (stamp == ApplyVersion) { WriteLog("Auto-apply skipped: " + ApplyVersion); return; }
 
                 if (File.Exists(metaPath))
                 {
-                    WriteLog("开始自动应用元数据...");
+                    WriteLog("Auto-apply metadata...");
                     ApplyMeta(metaPath, false);
-                    WriteLog("元数据自动应用完成");
+                    WriteLog("Metadata auto-apply done");
                 }
                 if (File.Exists(catPath))
                 {
-                    WriteLog("开始自动应用分类...");
+                    WriteLog("Auto-apply categories...");
                     ApplyCategories(catPath, false);
-                    WriteLog("分类自动应用完成");
+                    WriteLog("Categories auto-apply done");
                 }
                 File.WriteAllText(stampPath, ApplyVersion, new UTF8Encoding(false));
             }
             catch (Exception ex)
             {
-                WriteLog("自动应用失败: " + ex.ToString());
-                try { PlayniteApi.Dialogs.ShowErrorMessage("自动应用失败: " + ex.Message + "\n详见 ExtensionsData\\playnite-collection-tool\\tool_log.txt", "Playnite 库整理"); } catch { }
+                WriteLog("Auto-apply failed: " + ex.ToString());
+                try { PlayniteApi.Dialogs.ShowErrorMessage("Auto-apply failed: " + ex.Message + "\nSee ExtensionsData\\playnite-collection-tool\\tool_log.txt", "Playnite Collection Tool"); } catch { }
             }
         }
         // ================= 通用工具 =================
@@ -171,7 +173,10 @@ namespace PlayniteCollectionTool
 
 
         // ================= 本地化对照表 =================
-        private static readonly Dictionary<string, string> LocMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        // 默认映射（英文 -> 简体中文）；可用 loc_map.json 覆盖成任意目标语言。
+        // loc_map.json 放在 ExtensionsData\playnite-collection-tool\loc_map.json，
+        // 格式：{ "English Name": "目标语言名称", ... }，只需覆盖你想改的键。
+        private static readonly Dictionary<string, string> DefaultLocMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             { "Steam", "Steam" },
             { "Epic", "Epic 游戏商城" },
@@ -207,12 +212,33 @@ namespace PlayniteCollectionTool
             { "Played for a bit", "玩过一会儿" }
         };
 
-        private static string Tr(string s)
+        private readonly Dictionary<string, string> LocMap;
+
+        private string Tr(string s)
         {
             if (string.IsNullOrEmpty(s)) return s;
             string v;
             if (LocMap.TryGetValue(s.Trim(), out v)) return v;
             return s;
+        }
+
+        private void LoadLocMapOverride()
+        {
+            try
+            {
+                LocMap.Clear();
+                foreach (var kv in DefaultLocMap) LocMap[kv.Key] = kv.Value;
+                string locFile = Path.Combine(outDir, "loc_map.json");
+                if (!File.Exists(locFile)) return;
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(locFile, Encoding.UTF8));
+                foreach (var prop in obj.Properties())
+                {
+                    if (prop.Value.Type == Newtonsoft.Json.Linq.JTokenType.String)
+                        LocMap[prop.Name] = prop.Value.ToString();
+                }
+                WriteLog("Loaded locale override: " + locFile);
+            }
+            catch (Exception ex) { WriteLog("Failed to load loc_map.json (using defaults): " + ex.Message); }
         }
 
         // 只对"来源/完成状态/平台"做替换，避免误伤厂商里的自造词
@@ -224,7 +250,7 @@ namespace PlayniteCollectionTool
                 if (t != src.Name)
                 {
                     if (!dryRun) { src.Name = t; PlayniteApi.Database.Sources.Update(src); }
-                    report.Add("来源: " + src.Name + " -> " + t);
+                    report.Add("Source: " + src.Name + " -> " + t);
                 }
             }
             foreach (var cs in PlayniteApi.Database.CompletionStatuses)
@@ -233,7 +259,7 @@ namespace PlayniteCollectionTool
                 if (t != cs.Name)
                 {
                     if (!dryRun) { cs.Name = t; PlayniteApi.Database.CompletionStatuses.Update(cs); }
-                    report.Add("完成状态: " + cs.Name + " -> " + t);
+                    report.Add("Completion status: " + cs.Name + " -> " + t);
                 }
             }
             foreach (var pf in PlayniteApi.Database.Platforms)
@@ -242,7 +268,7 @@ namespace PlayniteCollectionTool
                 if (t != pf.Name)
                 {
                     if (!dryRun) { pf.Name = t; PlayniteApi.Database.Platforms.Update(pf); }
-                    report.Add("平台: " + pf.Name + " -> " + t);
+                    report.Add("Platform: " + pf.Name + " -> " + t);
                 }
             }
         }
@@ -253,28 +279,28 @@ namespace PlayniteCollectionTool
             try
             {
                 string metaPath = Path.Combine(outDir, "游戏数据.tsv");
-                if (!File.Exists(metaPath)) { PlayniteApi.Dialogs.ShowErrorMessage("找不到 " + metaPath, "Playnite 库整理"); return; }
+                if (!File.Exists(metaPath)) { PlayniteApi.Dialogs.ShowErrorMessage("Not found: " + metaPath, "Playnite Collection Tool"); return; }
                 ApplyMeta(metaPath, true);
             }
-            catch (Exception ex) { WriteLog("应用元数据失败: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("应用元数据失败: " + ex.Message, "Playnite 库整理"); }
+            catch (Exception ex) { WriteLog("Apply metadata failed: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("Apply metadata failed: " + ex.Message, "Playnite Collection Tool"); }
         }
 
         private void ApplyMeta(string metaPath, bool showDialog)
         {
             var lines = File.ReadAllLines(metaPath, Encoding.UTF8);
-            if (lines.Length < 2) { WriteLog("元数据文件为空"); return; }
+            if (lines.Length < 2) { WriteLog("Metadata file empty"); return; }
             var header = lines[0].TrimStart('\uFEFF').Split('\t');
             int iId = Idx(header, "Id");
             int iName = Idx(header, "Name");
             int iSource = Idx(header, "Source");
-            int iNewName = Max(Idx(header, "中文名"), Idx(header, "NewName"), Idx(header, "中文名字"));
+            int iNewName = Max(Idx(header, "LocalName"), Idx(header, "中文名"), Idx(header, "NewName"), Idx(header, "中文名字"));
             int iRelease = Max(Idx(header, "ReleaseDate"), Idx(header, "发行日期"));
             int iGenres = Max(Idx(header, "Genres"), Idx(header, "类型"));
             int iDev = Max(Idx(header, "Developers"), Idx(header, "开发商"));
             int iPub = Max(Idx(header, "Publishers"), Idx(header, "发行商"));
             int iDesc = Max(Idx(header, "Description"), Idx(header, "简介"), Idx(header, "描述"));
             int iSeries = Max(Idx(header, "Series"), Idx(header, "系列"));
-            if (iName < 0) { WriteLog("元数据缺少 Name 列"); return; }
+            if (iName < 0) { WriteLog("Metadata missing Name column"); return; }
 
             var gameList = new List<Playnite.SDK.Models.Game>();
             foreach (var g in PlayniteApi.Database.Games) gameList.Add(g);
@@ -383,14 +409,14 @@ namespace PlayniteCollectionTool
             if (File.Exists(catPath) && nameMap.Count > 0)
             {
                 int reapplied = ApplyCategories(catPath, false, nameMap);
-                WriteLog("改名后重新应用分类，命中 " + reapplied + " 条");
+                WriteLog("Re-applied categories after rename, matched " + reapplied + " rows");
             }
 
             File.WriteAllText(Path.Combine(outDir, "meta_backup.tsv"), revert.ToString(), new UTF8Encoding(true));
 
-            string msg = "元数据应用完成。\n更新游戏: " + updated + "（改名 " + nameChanged + " / 发行日期 " + dateFilled + " / 简介 " + descChanged + " / 类型 " + genresChanged + " / 开发商 " + devChanged + " / 发行商 " + pubChanged + "）\n未匹配: " + unmatched.Count + "\n备份: meta_backup.tsv";
+            string msg = "Metadata applied.\nUpdated games: " + updated + " (renamed " + nameChanged + " / release date " + dateFilled + " / description " + descChanged + " / genres " + genresChanged + " / developers " + devChanged + " / publishers " + pubChanged + ")\nUnmatched: " + unmatched.Count + "\nBackup: meta_backup.tsv";
             WriteLog(msg.Replace("\n", " | "));
-            if (showDialog) PlayniteApi.Dialogs.ShowMessage(msg + (unmatched.Count > 0 ? "\n\n未匹配示例:\n" + string.Join("\n", unmatched.Take(8).ToArray()) : ""), "Playnite 库整理");
+            if (showDialog) PlayniteApi.Dialogs.ShowMessage(msg + (unmatched.Count > 0 ? "\n\nUnmatched samples:\n" + string.Join("\n", unmatched.Take(8).ToArray()) : ""), "Playnite Collection Tool");
         }
 
         private static string DateStr(Playnite.SDK.Models.ReleaseDate? rd)
@@ -472,7 +498,7 @@ namespace PlayniteCollectionTool
             try
             {
                 string bk = Path.Combine(outDir, "meta_backup.tsv");
-                if (!File.Exists(bk)) { PlayniteApi.Dialogs.ShowMessage("没有 meta_backup.tsv，无法撤销。", "Playnite 库整理"); return; }
+                if (!File.Exists(bk)) { PlayniteApi.Dialogs.ShowMessage("No meta_backup.tsv to revert.", "Playnite Collection Tool"); return; }
                 string text = File.ReadAllText(bk, Encoding.UTF8);
                 int cnt = 0;
                 using (PlayniteApi.Database.BufferedUpdate())
@@ -495,10 +521,10 @@ namespace PlayniteCollectionTool
                         cnt++;
                     }
                 }
-                PlayniteApi.Dialogs.ShowMessage("已撤销 " + cnt + " 条游戏的元数据改动。", "Playnite 库整理");
-                WriteLog("撤销元数据 " + cnt + " 条");
+                PlayniteApi.Dialogs.ShowMessage("Reverted " + cnt + " games' metadata.", "Playnite Collection Tool");
+                WriteLog("Reverted metadata " + cnt + " rows");
             }
-            catch (Exception ex) { WriteLog("撤销失败: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("撤销失败: " + ex.Message, "Playnite 库整理"); }
+            catch (Exception ex) { WriteLog("Revert failed: " + ex.ToString()); PlayniteApi.Dialogs.ShowErrorMessage("Revert failed: " + ex.Message, "Playnite Collection Tool"); }
         }
 
         private class BkRec { public string id; public string name; public string releaseDate; public string genres; public string developers; public string publishers; public string series; public string description; }
@@ -585,13 +611,13 @@ namespace PlayniteCollectionTool
                 string tsvPath = Path.Combine(outDir, "games.tsv");
                 File.WriteAllText(jsonPath, json, new UTF8Encoding(true));
                 File.WriteAllText(tsvPath, sbTsv.ToString(), new UTF8Encoding(true));
-                WriteLog("导出完成 " + count + " 款 -> " + jsonPath);
-                PlayniteApi.Dialogs.ShowMessage("已导出 " + count + " 款游戏。\n\n" + jsonPath + "\n" + tsvPath, "Playnite 库整理");
+                WriteLog("Export done " + count + " games -> " + jsonPath);
+                PlayniteApi.Dialogs.ShowMessage("Exported " + count + " games.\n\n" + jsonPath + "\n" + tsvPath, "Playnite Collection Tool");
             }
             catch (Exception ex)
             {
-                WriteLog("导出失败: " + ex.ToString());
-                PlayniteApi.Dialogs.ShowErrorMessage("导出失败: " + ex.Message, "Playnite 库整理");
+                WriteLog("Export failed: " + ex.ToString());
+                PlayniteApi.Dialogs.ShowErrorMessage("Export failed: " + ex.Message, "Playnite Collection Tool");
             }
         }
 
@@ -613,8 +639,8 @@ namespace PlayniteCollectionTool
             }
             catch (Exception ex)
             {
-                WriteLog("导入失败: " + ex.ToString());
-                PlayniteApi.Dialogs.ShowErrorMessage("导入失败: " + ex.Message, "Playnite 库整理");
+                WriteLog("Import failed: " + ex.ToString());
+                PlayniteApi.Dialogs.ShowErrorMessage("Import failed: " + ex.Message, "Playnite Collection Tool");
             }
         }
 
@@ -624,19 +650,19 @@ namespace PlayniteCollectionTool
         {
             if (!File.Exists(mapPath))
             {
-                WriteLog("找不到映射文件: " + mapPath);
-                if (showDialog) PlayniteApi.Dialogs.ShowErrorMessage("找不到映射文件:\n" + mapPath, "Playnite 库整理");
+                WriteLog("Mapping file not found: " + mapPath);
+                if (showDialog) PlayniteApi.Dialogs.ShowErrorMessage("Mapping file not found:\n" + mapPath, "Playnite Collection Tool");
                 return 0;
             }
             var lines = File.ReadAllLines(mapPath, Encoding.UTF8);
-            if (lines.Length < 2) { WriteLog("映射文件为空"); return 0; }
+            if (lines.Length < 2) { WriteLog("Mapping file empty"); return 0; }
 
             var header = lines[0].Split('\t');
             int iName = Idx(header, "Name");
             int iSrc = Idx(header, "Source");
             int iCat = Idx(header, "Categories");
             int iTag = Idx(header, "Tags");
-            if (iName < 0) { WriteLog("映射文件缺少 Name 列"); return 0; }
+            if (iName < 0) { WriteLog("Mapping file missing Name column"); return 0; }
 
             var rows = new List<Row>();
             for (int i = 1; i < lines.Length; i++)
@@ -730,9 +756,9 @@ namespace PlayniteCollectionTool
             res.Append("  \"GameIds\": [").Append(string.Join(",", updatedIds.Select(x => J(x.ToString())).ToArray())).Append("]\n}");
             File.WriteAllText(Path.Combine(outDir, "import_result.json"), res.ToString(), new UTF8Encoding(true));
 
-            WriteLog("导入完成 rows=" + rows.Count + " updated=" + updated + " unmatched=" + unmatched.Count + " ambiguous=" + ambiguous.Count + " cats=" + catNames.Count + " tags=" + tagNames.Count);
+            WriteLog("Import done rows=" + rows.Count + " updated=" + updated + " unmatched=" + unmatched.Count + " ambiguous=" + ambiguous.Count + " cats=" + catNames.Count + " tags=" + tagNames.Count);
             if (showDialog)
-                PlayniteApi.Dialogs.ShowMessage("导入完成。\n更新游戏: " + updated + "\n未匹配: " + unmatched.Count + "\n同名多条目: " + ambiguous.Count + "\n分类数: " + catNames.Count + "\n标签数: " + tagNames.Count + "\n\n" + Path.Combine(outDir, "import_result.json"), "Playnite 库整理");
+                PlayniteApi.Dialogs.ShowMessage("Import done.\nUpdated games: " + updated + "\nUnmatched: " + unmatched.Count + "\nAmbiguous: " + ambiguous.Count + "\nCategories: " + catNames.Count + "\nTags: " + tagNames.Count + "\n\n" + Path.Combine(outDir, "import_result.json"), "Playnite Collection Tool");
             return updated;
         }
 
@@ -742,13 +768,13 @@ namespace PlayniteCollectionTool
             try
             {
                 string mp = Path.Combine(outDir, "import_result.json");
-                if (!File.Exists(mp)) { PlayniteApi.Dialogs.ShowMessage("没有 import_result.json，无法确定要清除的内容。", "Playnite 库整理"); return; }
+                if (!File.Exists(mp)) { PlayniteApi.Dialogs.ShowMessage("No import_result.json, cannot determine what to remove.", "Playnite Collection Tool"); return; }
                 string text = File.ReadAllText(mp, Encoding.UTF8);
                 var catIds = ExtractIds(text, "CategoryIds");
                 var tagIds = ExtractIds(text, "TagIds");
-                if (catIds.Count == 0 && tagIds.Count == 0) { PlayniteApi.Dialogs.ShowMessage("上次导入没有分类/标签记录。", "Playnite 库整理"); return; }
+                if (catIds.Count == 0 && tagIds.Count == 0) { PlayniteApi.Dialogs.ShowMessage("No category/tag records from last import.", "Playnite Collection Tool"); return; }
 
-                var confirm = PlayniteApi.Dialogs.ShowMessage("将移除本插件写入的 " + catIds.Count + " 个分类与 " + tagIds.Count + " 个标签（含各游戏上的关联），确定继续？", "Playnite 库整理", System.Windows.MessageBoxButton.YesNo);
+                var confirm = PlayniteApi.Dialogs.ShowMessage("This will remove " + catIds.Count + " categories and " + tagIds.Count + " tags (including associations on games). Continue?", "Playnite Collection Tool", System.Windows.MessageBoxButton.YesNo);
                 if (confirm != System.Windows.MessageBoxResult.Yes) return;
 
                 var cats = new HashSet<Guid>(catIds);
@@ -768,13 +794,13 @@ namespace PlayniteCollectionTool
                     foreach (var id in tags) { var t = PlayniteApi.Database.Tags.Get(id); if (t != null) PlayniteApi.Database.Tags.Remove(t); }
                 }
                 File.Delete(Path.Combine(outDir, "applied_version.txt"));
-                WriteLog("已清除分类与标签");
-                PlayniteApi.Dialogs.ShowMessage("已清除。", "Playnite 库整理");
+                WriteLog("Removed categories/tags");
+                PlayniteApi.Dialogs.ShowMessage("Removed.", "Playnite Collection Tool");
             }
             catch (Exception ex)
             {
-                WriteLog("清除失败: " + ex.ToString());
-                PlayniteApi.Dialogs.ShowErrorMessage("清除失败: " + ex.Message, "Playnite 库整理");
+                WriteLog("Clear failed: " + ex.ToString());
+                PlayniteApi.Dialogs.ShowErrorMessage("Clear failed: " + ex.Message, "Playnite Collection Tool");
             }
         }
 
